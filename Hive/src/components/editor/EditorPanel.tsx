@@ -1,51 +1,187 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
+import { X, Search, Settings, GitBranch, FileCode, Save } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 
 interface EditorPanelProps {
   openFile: string | null;
 }
 
+interface OpenTab {
+  id: string;
+  name: string;
+  path: string;
+  language: string;
+  modified: boolean;
+  content: string;
+}
+
 export default function EditorPanel({ openFile }: EditorPanelProps) {
   const editorRef = useRef<any>(null);
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [tabs, setTabs] = useState<OpenTab[]>([]);
+  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
+  const [language, setLanguage] = useState('typescript');
+  const [loading, setLoading] = useState(false);
+
+  const getFileIcon = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const icons: Record<string, string> = {
+      ts: '📘',
+      tsx: '⚛️',
+      js: '📜',
+      jsx: '⚛️',
+      json: '📋',
+      md: '📝',
+      css: '🎨',
+      html: '🌐',
+      rs: '🦀',
+      toml: '⚙️',
+      gitignore: '🚫',
+    };
+    return icons[ext || ''] || '📄';
+  };
+
+  const getLanguageFromPath = (path: string): string => {
+    const ext = path.split('.').pop()?.toLowerCase();
+    const languages: Record<string, string> = {
+      ts: 'typescript',
+      tsx: 'typescript',
+      js: 'javascript',
+      jsx: 'javascript',
+      json: 'json',
+      md: 'markdown',
+      css: 'css',
+      html: 'html',
+      rs: 'rust',
+      toml: 'toml',
+    };
+    return languages[ext || ''] || 'plaintext';
+  };
+
+  useEffect(() => {
+    const loadFile = async () => {
+      if (openFile && !tabs.find(t => t.path === openFile)) {
+        setLoading(true);
+        try {
+          const content = await invoke<string>('read_file', { path: openFile });
+          const newTab: OpenTab = {
+            id: Date.now().toString(),
+            name: openFile.split('/').pop() || openFile,
+            path: openFile,
+            language: getLanguageFromPath(openFile),
+            modified: false,
+            content,
+          };
+          setTabs([...tabs, newTab]);
+          setActiveTab(newTab.id);
+          setLanguage(newTab.language);
+        } catch (e) {
+          console.error('Failed to load file:', e);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    loadFile();
+  }, [openFile]);
+
+  const closeTab = (tabId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setTabs(tabs.filter(t => t.id !== tabId));
+    if (activeTab === tabId) {
+      setActiveTab(tabs.length > 1 ? tabs[tabs.length - 2].id : null);
+    }
+  };
+
+  const saveFile = async () => {
+    if (!activeTab) return;
+    const tab = tabs.find(t => t.id === activeTab);
+    if (!tab) return;
+
+    try {
+      await invoke('write_file', { path: tab.path, content: tab.content });
+      setTabs(tabs.map(t => t.id === activeTab ? { ...t, modified: false } : t));
+    } catch (e) {
+      console.error('Failed to save file:', e);
+    }
+  };
+
+  const handleEditorChange = (value: string | undefined) => {
+    if (!activeTab) return;
+    setTabs(tabs.map(t => t.id === activeTab ? { ...t, content: value || '', modified: true } : t));
+  };
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col bg-[#1e1e1e]">
       {/* File tabs */}
-      <div className="h-10 bg-gray-800 border-b border-gray-700 flex items-center px-4">
-        <span className="text-sm text-gray-300">
-          {openFile || 'No file open'}
-        </span>
+      <div className="h-9 bg-[#252526] flex items-center overflow-x-auto">
+        {tabs.length === 0 ? (
+          <div className="px-4 text-sm text-gray-500 italic">No files open</div>
+        ) : (
+          tabs.map(tab => (
+            <div
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`h-full flex items-center px-3 gap-2 cursor-pointer border-r border-[#1e1e1e] min-w-max transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-[#1e1e1e] text-white'
+                  : 'bg-[#2d2d2d] text-gray-400 hover:bg-[#323232]'
+              }`}
+            >
+              <span className="text-sm">{getFileIcon(tab.name)}</span>
+              <span className="text-sm font-medium">{tab.name}</span>
+              {tab.modified && <span className="w-2 h-2 rounded-full bg-yellow-500" />}
+              <button
+                onClick={(e) => closeTab(tab.id, e)}
+                className="p-1 rounded hover:bg-[#3c3c3c] opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Editor */}
-      <div className="flex-1">
-        <Editor
-          height="100%"
-          defaultLanguage="typescript"
-          theme="vs-dark"
-          value={openFile ? `// ${openFile}\n// File content would be loaded here` : '// Select a file to edit'}
-          onMount={(editor) => {
-            editorRef.current = editor;
-          }}
-          options={{
-            minimap: { enabled: false },
-            fontSize: 14,
-            lineNumbers: 'on',
-            scrollBeyondLastLine: false,
-          }}
-        />
-      </div>
-
-      {/* Inline terminal */}
-      <div className="h-48 bg-gray-900 border-t border-gray-700">
-        <div className="h-8 bg-gray-800 border-b border-gray-700 flex items-center px-4">
-          <span className="text-xs text-gray-400">Terminal</span>
-        </div>
-        <div className="p-2 font-mono text-sm text-green-400">
-          $ Ready for commands...
-        </div>
+      <div className="flex-1 relative">
+        {loading ? (
+          <div className="flex items-center justify-center h-full text-gray-500">Loading...</div>
+        ) : (
+          <Editor
+            height="100%"
+            defaultLanguage={language}
+            theme="vs-dark"
+            value={activeTab ? tabs.find(t => t.id === activeTab)?.content : '// Select a file to edit'}
+            onChange={handleEditorChange}
+            onMount={(editor, monaco) => {
+              editorRef.current = editor;
+              editor.onDidChangeCursorPosition((e: any) => {
+                setCursorPosition({ line: e.position.lineNumber, column: e.position.column });
+              });
+            }}
+            options={{
+              minimap: { enabled: true },
+              fontSize: 14,
+              fontFamily: 'JetBrains Mono, Consolas, Monaco, monospace',
+              lineNumbers: 'on',
+              scrollBeyondLastLine: false,
+              renderWhitespace: 'selection',
+              automaticLayout: true,
+              tabSize: 2,
+              wordWrap: 'off',
+              formatOnPaste: true,
+              formatOnType: true,
+              suggest: {
+                showKeywords: true,
+                showSnippets: true,
+              },
+              padding: { top: 10 },
+            }}
+          />
+        )}
       </div>
     </div>
   );
