@@ -39,4 +39,4 @@ coverage
 # Rust (for Hive)
 target
 Cargo.lock
-#AGENTS.md
+AGENTS.md

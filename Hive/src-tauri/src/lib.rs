@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, PtySize, MasterPty};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -36,11 +36,39 @@ async fn spawn_terminal(
     pane_id: String,
     command: String,
     args: Vec<String>,
+    working_dir: Option<String>,
     state: State<'_, PtySystem>,
 ) -> Result<String, String> {
     let pty_system = native_pty_system();
     
+    // Check command type before moving it
+    let is_cmd = command.contains("cmd.exe");
+    let is_powershell = command.contains("powershell.exe");
+    let is_bash_or_wsl = command.contains("bash.exe") || command.contains("wsl.exe");
+    
     let mut cmd = CommandBuilder::new(command);
+    
+    // Set working directory by prepending cd command for shell
+    if let Some(dir) = working_dir {
+        if let Ok(path) = PathBuf::from(&dir).canonicalize() {
+            if path.exists() {
+                let path_str = path.to_string_lossy().to_string();
+                // For Windows shells, we need to change directory differently
+                if is_cmd {
+                    cmd.arg("/c");
+                    cmd.arg(&format!("cd /d \"{}\" && cmd.exe", path_str));
+                } else if is_powershell {
+                    cmd.arg("-NoExit");
+                    cmd.arg("-Command");
+                    cmd.arg(&format!("Set-Location '{}';", path_str));
+                } else if is_bash_or_wsl {
+                    cmd.arg("-c");
+                    cmd.arg(&format!("cd \"{}\" && bash", path_str));
+                }
+            }
+        }
+    }
+    
     for arg in args {
         cmd.arg(&arg);
     }
@@ -72,7 +100,7 @@ async fn write_to_terminal(
 ) -> Result<(), String> {
     let ptys = state.ptys.lock().unwrap();
     if let Some(pty_pair) = ptys.get(&input.pane_id) {
-        let mut pty = pty_pair.lock().unwrap();
+        let pty = pty_pair.lock().unwrap();
         let mut writer = pty.master.take_writer().map_err(|e| e.to_string())?;
         writer
             .write_all(input.data.as_bytes())
@@ -88,7 +116,7 @@ async fn read_from_terminal(
 ) -> Result<String, String> {
     let ptys = state.ptys.lock().unwrap();
     if let Some(pty_pair) = ptys.get(&pane_id) {
-        let mut pty = pty_pair.lock().unwrap();
+        let pty = pty_pair.lock().unwrap();
         let mut reader = pty.master.try_clone_reader().map_err(|e| e.to_string())?;
         let mut output = String::new();
         let mut buffer = [0u8; 4096];
@@ -191,6 +219,13 @@ async fn get_project_path() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn get_home_dir() -> Result<String, String> {
+    std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn ensure_nectar_structure(project_path: String) -> Result<(), String> {
     let nectar_path = std::path::Path::new(&project_path).join(".nectar");
     let dirs = [
@@ -245,6 +280,7 @@ pub fn run() {
             write_file,
             list_directory,
             get_project_path,
+            get_home_dir,
             ensure_nectar_structure
         ])
         .run(tauri::generate_context!())

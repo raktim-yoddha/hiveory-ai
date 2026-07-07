@@ -6,7 +6,7 @@ import EditorPanel from '@/components/editor/EditorPanel';
 import ADEPanel from '@/components/terminal/ADEPanel';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { File, Terminal, Settings, Search, GitBranch, FolderOpen, Save as SaveIcon, Plus, Minus, Square, X } from 'lucide-react';
+import { File, Terminal, Settings, Search, GitBranch, Plus, Minus, Square, X } from 'lucide-react';
 
 export default function Home() {
   const [sidebarMode, setSidebarMode] = useState<'editor' | 'ade'>('editor');
@@ -14,15 +14,17 @@ export default function Home() {
   const [initialized, setInitialized] = useState(false);
   const [activeView, setActiveView] = useState<'explorer' | 'search' | 'git' | 'settings'>('explorer');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeMenu, setActiveMenu] = useState<string | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(256);
+  const [sidebarWidth, setSidebarWidth] = useState(250);
   const [isResizing, setIsResizing] = useState(false);
+  const [projectPath, setProjectPath] = useState<string | null>(null);
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
   useEffect(() => {
     const initializeNectar = async () => {
       try {
-        const projectPath = await invoke<string>('get_project_path');
-        await invoke('ensure_nectar_structure', { projectPath });
+        const path = await invoke<string>('get_project_path');
+        setProjectPath(path);
+        await invoke('ensure_nectar_structure', { projectPath: path });
         setInitialized(true);
       } catch (e) {
         console.error('Failed to initialize Nectar:', e);
@@ -33,25 +35,13 @@ export default function Home() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+S - Save file
-      if (e.ctrlKey && e.key === 's') {
-        e.preventDefault();
-        console.log('Save shortcut triggered');
-      }
-      // Ctrl+` - Toggle ADE
       if (e.ctrlKey && e.key === '`') {
         e.preventDefault();
         setSidebarMode(sidebarMode === 'ade' ? 'editor' : 'ade');
       }
-      // Ctrl+B - Toggle sidebar
       if (e.ctrlKey && e.key === 'b') {
         e.preventDefault();
         setSidebarCollapsed(!sidebarCollapsed);
-      }
-      // Ctrl+P - Command palette (placeholder)
-      if (e.ctrlKey && e.key === 'p') {
-        e.preventDefault();
-        console.log('Command palette triggered');
       }
     };
 
@@ -66,7 +56,7 @@ export default function Home() {
 
   const handleMouseMove = (e: MouseEvent) => {
     if (isResizing) {
-      const newWidth = e.clientX - 48; // Subtract activity bar width
+      const newWidth = e.clientX;
       if (newWidth >= 150 && newWidth <= 500) {
         setSidebarWidth(newWidth);
       }
@@ -91,17 +81,6 @@ export default function Home() {
     };
   }, [isResizing]);
 
-  const handleOpenFile = async () => {
-    try {
-      const path = await invoke<string>('open_file_dialog');
-      if (path) {
-        setOpenFile(path);
-      }
-    } catch (e) {
-      console.error('Failed to open file:', e);
-    }
-  };
-
   const handleWindowAction = async (action: 'minimize' | 'maximize' | 'close') => {
     try {
       const window = getCurrentWindow();
@@ -113,7 +92,7 @@ export default function Home() {
           await window.toggleMaximize();
           break;
         case 'close':
-          await window.close();
+          await window.destroy();
           break;
       }
     } catch (e) {
@@ -124,16 +103,11 @@ export default function Home() {
   const menuItems = {
     file: [
       { label: 'New File', action: () => console.log('New file') },
-      { label: 'New Window', action: () => console.log('New window') },
-      { label: 'Open File...', action: handleOpenFile },
+      { label: 'Open File...', action: () => console.log('Open file') },
       { label: 'Open Folder...', action: () => console.log('Open folder') },
       { label: '-', action: () => {} },
       { label: 'Save', action: () => console.log('Save') },
       { label: 'Save As...', action: () => console.log('Save as') },
-      { label: 'Save All', action: () => console.log('Save all') },
-      { label: '-', action: () => {} },
-      { label: 'Close Editor', action: () => console.log('Close editor') },
-      { label: 'Close Folder', action: () => console.log('Close folder') },
       { label: '-', action: () => {} },
       { label: 'Exit', action: () => handleWindowAction('close') },
     ],
@@ -144,22 +118,6 @@ export default function Home() {
       { label: 'Cut', action: () => console.log('Cut') },
       { label: 'Copy', action: () => console.log('Copy') },
       { label: 'Paste', action: () => console.log('Paste') },
-      { label: '-', action: () => {} },
-      { label: 'Find', action: () => console.log('Find') },
-      { label: 'Replace', action: () => console.log('Replace') },
-      { label: '-', action: () => {} },
-      { label: 'Go to Line', action: () => console.log('Go to line') },
-    ],
-    selection: [
-      { label: 'Select All', action: () => console.log('Select all') },
-      { label: '-', action: () => {} },
-      { label: 'Expand Selection', action: () => console.log('Expand selection') },
-      { label: 'Shrink Selection', action: () => console.log('Shrink selection') },
-      { label: '-', action: () => {} },
-      { label: 'Copy Line Up', action: () => console.log('Copy line up') },
-      { label: 'Copy Line Down', action: () => console.log('Copy line down') },
-      { label: 'Move Line Up', action: () => console.log('Move line up') },
-      { label: 'Move Line Down', action: () => console.log('Move line down') },
     ],
     view: [
       { label: 'Command Palette', action: () => console.log('Command palette') },
@@ -167,97 +125,68 @@ export default function Home() {
       { label: 'Explorer', action: () => setActiveView('explorer') },
       { label: 'Search', action: () => setActiveView('search') },
       { label: 'Source Control', action: () => setActiveView('git') },
-      { label: 'Extensions', action: () => setActiveView('settings') },
+      { label: 'Settings', action: () => setActiveView('settings') },
       { label: '-', action: () => {} },
       { label: 'Toggle Sidebar', action: () => setSidebarCollapsed(!sidebarCollapsed) },
-      { label: 'Toggle Activity Bar', action: () => console.log('Toggle activity bar') },
-      { label: '-', action: () => {} },
-      { label: 'Appearance', action: () => console.log('Appearance') },
-    ],
-    go: [
-      { label: 'Go to File...', action: () => console.log('Go to file') },
-      { label: 'Go to Line...', action: () => console.log('Go to line') },
-      { label: 'Go to Symbol...', action: () => console.log('Go to symbol') },
-      { label: '-', action: () => {} },
-      { label: 'Back', action: () => console.log('Back') },
-      { label: 'Forward', action: () => console.log('Forward') },
-      { label: '-', action: () => {} },
-      { label: 'Go to Definition', action: () => console.log('Go to definition') },
-      { label: 'Peek Definition', action: () => console.log('Peek definition') },
-    ],
-    run: [
-      { label: 'Run Task', action: () => console.log('Run task') },
-      { label: '-', action: () => {} },
-      { label: 'Start Debugging', action: () => console.log('Start debugging') },
-      { label: 'Run and Debug', action: () => console.log('Run and debug') },
-      { label: '-', action: () => {} },
-      { label: 'Stop Debugging', action: () => console.log('Stop debugging') },
-      { label: 'Restart Debugging', action: () => console.log('Restart debugging') },
     ],
     terminal: [
       { label: 'New Terminal', action: () => setSidebarMode('ade') },
       { label: 'Split Terminal', action: () => console.log('Split terminal') },
       { label: '-', action: () => {} },
       { label: 'Clear Terminal', action: () => console.log('Clear terminal') },
-      { label: '-', action: () => {} },
-      { label: 'Configure Default Shell', action: () => console.log('Configure shell') },
     ],
     help: [
       { label: 'Welcome', action: () => console.log('Welcome') },
-      { label: 'Documentation', action: () => console.log('Documentation') },
-      { label: '-', action: () => {} },
-      { label: 'Keyboard Shortcuts', action: () => console.log('Keyboard shortcuts') },
-      { label: '-', action: () => {} },
-      { label: 'Check for Updates', action: () => console.log('Check updates') },
       { label: 'About', action: () => console.log('About') },
     ],
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-white font-sans">
-      {/* Single Windows-style Title Bar */}
-      <div className="h-8 bg-[#323233] flex items-center justify-between px-2 border-b border-[#252526] select-none" data-tauri-drag-region>
-        {/* Left: Editor/ADE tabs */}
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setSidebarMode('editor')}
-            className={`px-3 py-1 text-xs rounded flex items-center gap-1.5 transition-colors ${
-              sidebarMode === 'editor' 
-                ? 'bg-[#1e1e1e] text-white' 
-                : 'text-gray-400 hover:bg-[#2a2d2e] hover:text-white'
-            }`}
-          >
-            <File size={12} />
-            Editor
-          </button>
-          <button
-            onClick={() => setSidebarMode('ade')}
-            className={`px-3 py-1 text-xs rounded flex items-center gap-1.5 transition-colors ${
-              sidebarMode === 'ade' 
-                ? 'bg-[#1e1e1e] text-white' 
-                : 'text-gray-400 hover:bg-[#2a2d2e] hover:text-white'
-            }`}
-          >
-            <Terminal size={12} />
-            ADE
-          </button>
+    <div className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-white font-sans select-none">
+      {/* Title Bar */}
+      <div className="h-8 bg-[#323233] flex items-center justify-between px-2 border-b border-[#252526]" data-tauri-drag-region>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 bg-gradient-to-br from-indigo-500 to-purple-600 rounded flex items-center justify-center text-xs font-bold">H</div>
+          <span className="text-sm font-medium text-gray-300">Hiveory</span>
+          
+          {/* Editor/ADE Toggle */}
+          <div className="flex items-center gap-1 ml-4">
+            <button
+              onClick={() => setSidebarMode('editor')}
+              className={`px-3 py-1 text-xs rounded flex items-center gap-1.5 transition-colors ${
+                sidebarMode === 'editor' 
+                  ? 'bg-[#1e1e1e] text-white' 
+                  : 'text-gray-400 hover:bg-[#2a2d2e] hover:text-white'
+              }`}
+            >
+              <File size={12} />
+              Editor
+            </button>
+            <button
+              onClick={() => setSidebarMode('ade')}
+              className={`px-3 py-1 text-xs rounded flex items-center gap-1.5 transition-colors ${
+                sidebarMode === 'ade' 
+                  ? 'bg-[#1e1e1e] text-white' 
+                  : 'text-gray-400 hover:bg-[#2a2d2e] hover:text-white'
+              }`}
+            >
+              <Terminal size={12} />
+              ADE
+            </button>
+          </div>
         </div>
 
-        {/* Center: App name */}
-        <div className="text-gray-400 text-xs font-medium">Hiveory v1</div>
-
-        {/* Right: Menu items + Window controls */}
         <div className="flex items-center gap-1">
           {Object.keys(menuItems).map((menu) => (
             <div key={menu} className="relative">
               <button
                 onClick={() => setActiveMenu(activeMenu === menu ? null : menu)}
-                className="px-2 py-1 text-xs text-gray-300 hover:bg-[#404040] rounded transition-colors capitalize"
+                className="px-3 py-1 text-xs text-gray-300 hover:bg-[#404040] rounded transition-colors capitalize"
               >
                 {menu}
               </button>
               {activeMenu === menu && (
-                <div className="absolute right-0 top-6 bg-[#252526] border border-[#3c3c3c] rounded shadow-lg z-50 min-w-40 max-h-96 overflow-y-auto">
+                <div className="absolute left-0 top-full mt-1 bg-[#252526] border border-[#3c3c3c] rounded shadow-lg z-50 min-w-48">
                   {menuItems[menu as keyof typeof menuItems].map((item, index) => (
                     item.label === '-' ? (
                       <div key={index} className="h-px bg-[#3c3c3c] my-1" />
@@ -268,7 +197,7 @@ export default function Home() {
                           item.action();
                           setActiveMenu(null);
                         }}
-                        className="w-full px-3 py-1.5 text-left text-xs hover:bg-[#3c3c3c] text-gray-300"
+                        className="w-full px-3 py-1.5 text-left text-xs hover:bg-[#094771] text-gray-300"
                       >
                         {item.label}
                       </button>
@@ -278,50 +207,41 @@ export default function Home() {
               )}
             </div>
           ))}
-          
-          <div className="w-px h-4 bg-[#252526] mx-1" />
-          
-          <button
-            onClick={() => handleWindowAction('minimize')}
-            className="w-8 h-6 flex items-center justify-center hover:bg-[#404040] text-gray-400 hover:text-white transition-colors"
-          >
-            <Minus size={12} />
+        </div>
+
+        <div className="flex items-center">
+          <button onClick={() => handleWindowAction('minimize')} className="w-10 h-8 flex items-center justify-center hover:bg-[#404040] text-gray-400 hover:text-white">
+            <Minus size={14} />
           </button>
-          <button
-            onClick={() => handleWindowAction('maximize')}
-            className="w-8 h-6 flex items-center justify-center hover:bg-[#404040] text-gray-400 hover:text-white transition-colors"
-          >
-            <Square size={10} />
+          <button onClick={() => handleWindowAction('maximize')} className="w-10 h-8 flex items-center justify-center hover:bg-[#404040] text-gray-400 hover:text-white">
+            <Square size={12} />
           </button>
-          <button
-            onClick={() => handleWindowAction('close')}
-            className="w-8 h-6 flex items-center justify-center hover:bg-[#e81123] text-gray-400 hover:text-white transition-colors"
-          >
-            <X size={12} />
+          <button onClick={() => handleWindowAction('close')} className="w-10 h-8 flex items-center justify-center hover:bg-[#e81123] text-gray-400 hover:text-white">
+            <X size={14} />
           </button>
         </div>
       </div>
 
-      {/* Main content */}
+      {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Activity bar */}
-        <div className="w-12 bg-[#333333] flex flex-col items-center py-2 gap-4 border-r border-[#252526]">
+        {/* Activity Bar */}
+        <div className="w-12 bg-[#333333] flex flex-col items-center py-2 gap-1 border-r border-[#252526]">
           <button
-            onClick={() => activeView === 'explorer' ? setSidebarCollapsed(true) : setActiveView('explorer')}
+            onClick={() => { setActiveView('explorer'); setSidebarCollapsed(false); }}
             className={`p-2 rounded hover:bg-[#2a2d2e] transition-colors ${activeView === 'explorer' ? 'text-white' : 'text-gray-500'}`}
             title="Explorer"
           >
             <File size={20} />
           </button>
           <button
-            onClick={() => activeView === 'search' ? setSidebarCollapsed(true) : setActiveView('search')}
+            onClick={() => { setActiveView('search'); setSidebarCollapsed(false); }}
             className={`p-2 rounded hover:bg-[#2a2d2e] transition-colors ${activeView === 'search' ? 'text-white' : 'text-gray-500'}`}
             title="Search"
           >
             <Search size={20} />
           </button>
           <button
-            onClick={() => activeView === 'git' ? setSidebarCollapsed(true) : setActiveView('git')}
+            onClick={() => { setActiveView('git'); setSidebarCollapsed(false); }}
             className={`p-2 rounded hover:bg-[#2a2d2e] transition-colors ${activeView === 'git' ? 'text-white' : 'text-gray-500'}`}
             title="Source Control"
           >
@@ -329,7 +249,7 @@ export default function Home() {
           </button>
           <div className="flex-1" />
           <button
-            onClick={() => activeView === 'settings' ? setSidebarCollapsed(true) : setActiveView('settings')}
+            onClick={() => { setActiveView('settings'); setSidebarCollapsed(false); }}
             className={`p-2 rounded hover:bg-[#2a2d2e] transition-colors ${activeView === 'settings' ? 'text-white' : 'text-gray-500'}`}
             title="Settings"
           >
@@ -344,8 +264,11 @@ export default function Home() {
               className="bg-[#252526] flex flex-col border-r border-[#1e1e1e]" 
               style={{ width: `${sidebarWidth}px` }}
             >
-              <div className="h-9 flex items-center px-4 text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                {activeView === 'explorer' ? 'Explorer' : activeView === 'search' ? 'Search' : activeView === 'git' ? 'Source Control' : 'Settings'}
+              <div className="h-9 flex items-center justify-between px-4 text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                <span>{activeView === 'explorer' ? 'Explorer' : activeView === 'search' ? 'Search' : activeView === 'git' ? 'Source Control' : 'Settings'}</span>
+                <button onClick={() => setSidebarCollapsed(true)} className="text-gray-500 hover:text-white">
+                  <X size={14} />
+                </button>
               </div>
               <Sidebar
                 mode={sidebarMode}
@@ -353,25 +276,24 @@ export default function Home() {
                 onFileSelect={setOpenFile}
               />
             </div>
-            {/* Resize handle */}
             <div 
-              className="w-1 bg-[#3c3c3c] hover:bg-[#007acc] cursor-col-resize transition-colors"
+              className="w-1 bg-[#252526] hover:bg-[#007acc] cursor-col-resize transition-colors"
               onMouseDown={handleMouseDown}
             />
           </>
         )}
 
-        {/* Main panel */}
-        <div className="flex-1 flex overflow-hidden">
+        {/* Main Panel */}
+        <div className="flex-1 overflow-hidden">
           {sidebarMode === 'editor' ? (
             <EditorPanel openFile={openFile} />
           ) : (
-            <ADEPanel />
+            <ADEPanel workingDir={projectPath} />
           )}
         </div>
       </div>
 
-      {/* Status bar */}
+      {/* Status Bar */}
       <div className="h-6 bg-[#007acc] flex items-center justify-between px-3 text-xs text-white">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1">
