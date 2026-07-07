@@ -60,10 +60,12 @@ export class SearchEngine {
     const queryEmbedding = await this.embedText(query);
     const db = this.db.getDatabase();
     
-    const chunks = db.prepare(`
+    const stmt = db.prepare(`
       SELECT id, source_file, chunk_index, content, embedding, created_at, updated_at
       FROM chunks
-    `).all() as Chunk[];
+    `);
+    const chunks = stmt.getAsObject() as Chunk[];
+    stmt.free();
     
     const results: SearchResult[] = [];
     
@@ -92,7 +94,7 @@ export class SearchEngine {
     const minScore = options.minScore || 0;
     const db = this.db.getDatabase();
     
-    const results = db.prepare(`
+    const stmt = db.prepare(`
       SELECT 
         c.id, c.source_file, c.chunk_index, c.content, c.embedding, c.created_at, c.updated_at,
         bm25(chunks_fts) as score
@@ -101,7 +103,10 @@ export class SearchEngine {
       WHERE chunks_fts MATCH ?
       ORDER BY score
       LIMIT ?
-    `).all(query, limit) as (Chunk & { score: number })[];
+    `);
+    stmt.bind([query, limit]);
+    const results = stmt.getAsObject() as (Chunk & { score: number })[];
+    stmt.free();
     
     return results
       .filter(r => r.score >= minScore)

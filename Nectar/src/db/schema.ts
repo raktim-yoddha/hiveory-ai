@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import initSqlJs from 'sql.js';
 
 export interface Chunk {
   id: string;
@@ -18,9 +18,9 @@ export interface MemoryFile {
   updated_at: number;
 }
 
-export function initializeSchema(db: Database.Database): void {
+export function initializeSchema(db: initSqlJs.Database): void {
   // Metadata table
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS metadata (
       key TEXT PRIMARY KEY,
       value TEXT
@@ -28,7 +28,7 @@ export function initializeSchema(db: Database.Database): void {
   `);
 
   // Memory files table
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS memory_files (
       id TEXT PRIMARY KEY,
       path TEXT NOT NULL UNIQUE,
@@ -39,7 +39,7 @@ export function initializeSchema(db: Database.Database): void {
   `);
 
   // Chunks table with vector storage
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS chunks (
       id TEXT PRIMARY KEY,
       source_file TEXT NOT NULL,
@@ -53,7 +53,7 @@ export function initializeSchema(db: Database.Database): void {
   `);
 
   // FTS5 virtual table for keyword search
-  db.exec(`
+  db.run(`
     CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
       content,
       source_file,
@@ -63,7 +63,7 @@ export function initializeSchema(db: Database.Database): void {
   `);
 
   // Triggers to keep FTS in sync
-  db.exec(`
+  db.run(`
     CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
       INSERT INTO chunks_fts(rowid, content, source_file, chunk_index)
       VALUES (new.rowid, new.content, new.source_file, new.chunk_index);
@@ -80,17 +80,23 @@ export function initializeSchema(db: Database.Database): void {
   `);
 
   // Indexes for better query performance
-  db.exec(`
+  db.run(`
     CREATE INDEX IF NOT EXISTS idx_chunks_source_file ON chunks(source_file);
     CREATE INDEX IF NOT EXISTS idx_memory_files_type ON memory_files(type);
   `);
 }
 
-export function getSchemaVersion(db: Database.Database): number {
-  const row = db.prepare('SELECT value FROM metadata WHERE key = ?').get('schema_version') as { value: string } | undefined;
-  return row ? parseInt(row.value, 10) : 0;
+export function getSchemaVersion(db: initSqlJs.Database): number {
+  const stmt = db.prepare('SELECT value FROM metadata WHERE key = ?');
+  stmt.bind(['schema_version']);
+  const result = stmt.getAsObject() as { value: string } | undefined;
+  stmt.free();
+  return result ? parseInt(result.value, 10) : 0;
 }
 
-export function setSchemaVersion(db: Database.Database, version: number): void {
-  db.prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)').run('schema_version', version.toString());
+export function setSchemaVersion(db: initSqlJs.Database, version: number): void {
+  const stmt = db.prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)');
+  stmt.bind(['schema_version', version.toString()]);
+  stmt.run();
+  stmt.free();
 }

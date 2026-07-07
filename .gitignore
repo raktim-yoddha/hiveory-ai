@@ -40,3 +40,6 @@ coverage
 target
 Cargo.lock
 AGENTS.md
+
+
+src-tauri/

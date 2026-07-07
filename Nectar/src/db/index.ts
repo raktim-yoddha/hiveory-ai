@@ -1,22 +1,37 @@
-import Database from 'better-sqlite3';
+import initSqlJs from 'sql.js';
 import path from 'path';
+import fs from 'fs/promises';
 import { initializeSchema, getSchemaVersion, setSchemaVersion } from './schema';
 
 const CURRENT_SCHEMA_VERSION = 1;
 
 export class NectarDatabase {
-  private db: Database.Database;
+  private db: initSqlJs.Database;
   private projectPath: string;
+  private dbPath: string;
 
-  constructor(projectPath: string) {
+  constructor(projectPath: string, db: initSqlJs.Database) {
     this.projectPath = projectPath;
-    const dbPath = path.join(projectPath, '.nectar', 'nectar.db');
-    this.db = new Database(dbPath);
-    
-    // Enable WAL mode for better concurrency
-    this.db.pragma('journal_mode = WAL');
+    this.db = db;
+    this.dbPath = path.join(projectPath, '.nectar', 'nectar.db');
     
     this.migrate();
+  }
+
+  static async create(projectPath: string): Promise<NectarDatabase> {
+    const SQL = await initSqlJs();
+    const dbPath = path.join(projectPath, '.nectar', 'nectar.db');
+    
+    let db: initSqlJs.Database;
+    try {
+      const buffer = await fs.readFile(dbPath);
+      db = new SQL.Database(buffer);
+    } catch {
+      // File doesn't exist, create new database
+      db = new SQL.Database();
+    }
+    
+    return new NectarDatabase(projectPath, db);
   }
 
   private migrate(): void {
@@ -29,17 +44,27 @@ export class NectarDatabase {
     // Future migrations would go here
   }
 
-  getDatabase(): Database.Database {
+  getDatabase(): initSqlJs.Database {
     return this.db;
   }
 
-  close(): void {
+  async close(): Promise<void> {
+    const data = this.db.export();
+    const buffer = Buffer.from(data);
+    await fs.writeFile(this.dbPath, buffer);
     this.db.close();
   }
 
   // Transaction helper
-  transaction<T>(fn: (db: Database.Database) => T): T {
-    const tx = this.db.transaction(fn);
-    return tx(this.db);
+  transaction<T>(fn: (db: initSqlJs.Database) => T): T {
+    this.db.run('BEGIN TRANSACTION');
+    try {
+      const result = fn(this.db);
+      this.db.run('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.run('ROLLBACK');
+      throw error;
+    }
   }
 }

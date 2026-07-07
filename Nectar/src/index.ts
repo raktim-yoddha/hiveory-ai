@@ -9,14 +9,21 @@ export class Nectar {
   private searchEngine: SearchEngine;
   private injectionPipeline: InjectionPipeline;
 
-  constructor(projectPath: string) {
-    this.db = new NectarDatabase(projectPath);
+  private constructor(projectPath: string, db: NectarDatabase) {
+    this.db = db;
     this.memoryManager = new MemoryManager(this.db, projectPath);
     this.searchEngine = new SearchEngine(this.db);
     this.injectionPipeline = new InjectionPipeline(this.searchEngine, this.memoryManager);
   }
 
-  async initialize(): Promise<void> {
+  static async create(projectPath: string): Promise<Nectar> {
+    const db = await NectarDatabase.create(projectPath);
+    const nectar = new Nectar(projectPath, db);
+    await nectar.initialize();
+    return nectar;
+  }
+
+  private async initialize(): Promise<void> {
     await this.memoryManager.ensureStructure();
   }
 
@@ -47,13 +54,10 @@ export class Nectar {
     const db = this.db.getDatabase();
 
     // Delete existing chunks for this file
-    db.prepare('DELETE FROM chunks WHERE source_file = ?').run(relativePath);
-
-    // Insert new chunks
-    const insert = db.prepare(`
-      INSERT INTO chunks (id, source_file, chunk_index, content, embedding, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    const deleteStmt = db.prepare('DELETE FROM chunks WHERE source_file = ?');
+    deleteStmt.bind([relativePath]);
+    deleteStmt.run();
+    deleteStmt.free();
 
     const now = Date.now();
     for (let i = 0; i < chunks.length; i++) {
@@ -61,7 +65,11 @@ export class Nectar {
       const embedding = await this.searchEngine['embedText'](chunk.text);
       const embeddingBuffer = new Float32Array(embedding).buffer;
       
-      insert.run(
+      const insertStmt = db.prepare(`
+        INSERT INTO chunks (id, source_file, chunk_index, content, embedding, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      insertStmt.bind([
         `${relativePath}:${i}:${now}`,
         relativePath,
         i,
@@ -69,20 +77,25 @@ export class Nectar {
         new Uint8Array(embeddingBuffer),
         now,
         now
-      );
+      ]);
+      insertStmt.run();
+      insertStmt.free();
     }
 
     // Update or insert memory file record
-    db.prepare(`
+    const upsertStmt = db.prepare(`
       INSERT OR REPLACE INTO memory_files (id, path, type, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?)
-    `).run(
+    `);
+    upsertStmt.bind([
       relativePath,
       relativePath,
       memoryFile.type,
       now,
       now
-    );
+    ]);
+    upsertStmt.run();
+    upsertStmt.free();
   }
 
   // Re-index all memory files
@@ -93,8 +106,8 @@ export class Nectar {
     }
   }
 
-  close(): void {
-    this.db.close();
+  async close(): Promise<void> {
+    await this.db.close();
   }
 }
 
