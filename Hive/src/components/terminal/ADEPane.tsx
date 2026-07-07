@@ -5,7 +5,7 @@ import { Terminal as XTerm, ITerminalOptions } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebglAddon } from 'xterm-addon-webgl';
 import { SearchAddon } from 'xterm-addon-search';
-import { Terminal, X, Maximize2, Minimize2, Copy, Trash2, Bot, ChevronDown } from 'lucide-react';
+import { Terminal, X, Maximize2, Minimize2, Copy, Trash2, Bot, ChevronDown, Terminal as TerminalIcon, Cpu, Zap } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
 interface ADEPaneProps {
@@ -15,10 +15,18 @@ interface ADEPaneProps {
   isMaximized?: boolean;
 }
 
-type AgentType = 'shell' | 'claude-code' | 'codex-cli' | 'aider' | 'gemini-cli' | 'antigravity' | 'open-code' | 'kimi-code' | 'cursor' | 'windsurf';
+type TerminalType = 'cmd' | 'powershell' | 'git-bash' | 'wsl';
+type AgentType = 'none' | 'claude-code' | 'codex-cli' | 'aider' | 'gemini-cli' | 'antigravity' | 'open-code' | 'kimi-code' | 'cursor' | 'windsurf';
+
+const TERMINAL_LABELS: Record<TerminalType, string> = {
+  'cmd': 'CMD',
+  'powershell': 'PowerShell',
+  'git-bash': 'Git Bash',
+  'wsl': 'WSL',
+};
 
 const AGENT_LABELS: Record<AgentType, string> = {
-  'shell': 'Shell',
+  'none': 'No Agent',
   'claude-code': 'Claude Code',
   'codex-cli': 'Codex CLI',
   'aider': 'Aider',
@@ -30,13 +38,24 @@ const AGENT_LABELS: Record<AgentType, string> = {
   'windsurf': 'Windsurf',
 };
 
+const TERMINAL_COMMANDS: Record<TerminalType, string> = {
+  'cmd': 'cmd.exe',
+  'powershell': 'powershell.exe',
+  'git-bash': 'bash.exe',
+  'wsl': 'wsl.exe',
+};
+
 export default function ADEPane({ paneId, onClose, onMaximize, isMaximized }: ADEPaneProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminalInstance = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const [isSpawned, setIsSpawned] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<AgentType>('shell');
+  const [selectedTerminal, setSelectedTerminal] = useState<TerminalType>('cmd');
+  const [selectedAgent, setSelectedAgent] = useState<AgentType>('none');
+  const [showTerminalMenu, setShowTerminalMenu] = useState(false);
   const [showAgentMenu, setShowAgentMenu] = useState(false);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -103,9 +122,9 @@ export default function ADEPane({ paneId, onClose, onMaximize, isMaximized }: AD
       terminal.open(terminalRef.current!);
       fitAddon.fit();
 
-      // Spawn shell or agent
+      // Spawn terminal
       try {
-        const command = selectedAgent === 'shell' ? 'cmd.exe' : selectedAgent;
+        const command = TERMINAL_COMMANDS[selectedTerminal];
         await invoke('spawn_terminal', {
           paneId,
           command,
@@ -170,6 +189,30 @@ export default function ADEPane({ paneId, onClose, onMaximize, isMaximized }: AD
     }
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+    setShowContextMenu(true);
+  };
+
+  const handleDelete = () => {
+    if (onClose) {
+      onClose();
+    }
+    setShowContextMenu(false);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setShowContextMenu(false);
+      setShowTerminalMenu(false);
+      setShowAgentMenu(false);
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   const handleTerminalInput = (data: string) => {
     if (isSpawned) {
       invoke('write_to_terminal', {
@@ -194,55 +237,81 @@ export default function ADEPane({ paneId, onClose, onMaximize, isMaximized }: AD
   }, [isSpawned, paneId, selectedAgent]);
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e]">
+    <div className="flex flex-col h-full bg-[#1e1e1e] relative" onContextMenu={handleContextMenu}>
       {/* ADE header */}
-      <div className="h-8 bg-[#252526] border-b border-[#3c3c3c] flex items-center justify-between px-3">
+      <div className="h-9 bg-[#252526] border-b border-[#3c3c3c] flex items-center justify-between px-2">
         <div className="flex items-center gap-2">
-          <Terminal size={14} className="text-gray-400" />
-          <span className="text-sm text-gray-300 font-medium">ADE {paneId}</span>
-          <span className="text-xs px-1.5 py-0.5 bg-[#1e1e1e] rounded text-gray-400">{AGENT_LABELS[selectedAgent]}</span>
-        </div>
-        <div className="flex items-center gap-1">
+          <Terminal size={12} className="text-gray-400" />
+          <span className="text-xs text-gray-300 font-medium">ADE {paneId}</span>
+          
+          {/* Terminal selector - improved UI */}
           <div className="relative">
             <button
-              onClick={() => setShowAgentMenu(!showAgentMenu)}
-              className="p-1.5 rounded hover:bg-[#3c3c3c] text-gray-400 hover:text-white transition-colors"
-              title="Select agent"
+              onClick={(e) => { e.stopPropagation(); setShowTerminalMenu(!showTerminalMenu); }}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#1e1e1e] border border-[#3c3c3c] rounded hover:border-[#007acc] text-gray-300 hover:text-white transition-all"
             >
-              <Bot size={14} />
+              <TerminalIcon size={11} className="text-blue-400" />
+              {TERMINAL_LABELS[selectedTerminal]}
+              <ChevronDown size={10} className="text-gray-500" />
+            </button>
+            {showTerminalMenu && (
+              <div className="absolute left-0 top-8 bg-[#252526] border border-[#3c3c3c] rounded shadow-lg z-20 min-w-36">
+                <div className="px-2 py-1.5 text-xs text-gray-500 font-medium border-b border-[#3c3c3c]">Terminal Type</div>
+                {(Object.keys(TERMINAL_LABELS) as TerminalType[]).map((terminal) => (
+                  <button
+                    key={terminal}
+                    onClick={(e) => { e.stopPropagation(); setSelectedTerminal(terminal); setShowTerminalMenu(false); setIsSpawned(false); }}
+                    className={`w-full px-3 py-1.5 text-left text-xs hover:bg-[#3c3c3c] flex items-center gap-2 ${selectedTerminal === terminal ? 'bg-[#3c3c3c] text-white' : 'text-gray-300'}`}
+                  >
+                    <TerminalIcon size={11} className={selectedTerminal === terminal ? 'text-blue-400' : 'text-gray-500'} />
+                    {TERMINAL_LABELS[terminal]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Agent selector - improved UI */}
+          <div className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowAgentMenu(!showAgentMenu); }}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#1e1e1e] border border-[#3c3c3c] rounded hover:border-[#007acc] text-gray-300 hover:text-white transition-all"
+            >
+              <Bot size={11} className={selectedAgent === 'none' ? 'text-gray-500' : 'text-purple-400'} />
+              {AGENT_LABELS[selectedAgent]}
+              <ChevronDown size={10} className="text-gray-500" />
             </button>
             {showAgentMenu && (
-              <div className="absolute right-0 top-8 bg-[#252526] border border-[#3c3c3c] rounded shadow-lg z-10 min-w-40 max-h-96 overflow-y-auto">
+              <div className="absolute left-0 top-8 bg-[#252526] border border-[#3c3c3c] rounded shadow-lg z-20 min-w-40 max-h-64 overflow-y-auto">
+                <div className="px-2 py-1.5 text-xs text-gray-500 font-medium border-b border-[#3c3c3c]">AI Agent</div>
                 {(Object.keys(AGENT_LABELS) as AgentType[]).map((agent) => (
                   <button
                     key={agent}
-                    onClick={() => {
-                      setSelectedAgent(agent);
-                      setShowAgentMenu(false);
-                      setIsSpawned(false);
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-[#3c3c3c] text-gray-300 flex items-center gap-2"
+                    onClick={(e) => { e.stopPropagation(); setSelectedAgent(agent); setShowAgentMenu(false); }}
+                    className={`w-full px-3 py-1.5 text-left text-xs hover:bg-[#3c3c3c] flex items-center gap-2 ${selectedAgent === agent ? 'bg-[#3c3c3c] text-white' : 'text-gray-300'}`}
                   >
-                    <Bot size={12} />
+                    <Bot size={11} className={selectedAgent === agent ? 'text-purple-400' : 'text-gray-500'} />
                     {AGENT_LABELS[agent]}
                   </button>
                 ))}
               </div>
             )}
           </div>
+        </div>
+        <div className="flex items-center gap-1">
           <button
             onClick={handleCopy}
             className="p-1.5 rounded hover:bg-[#3c3c3c] text-gray-400 hover:text-white transition-colors"
             title="Copy selection"
           >
-            <Copy size={14} />
+            <Copy size={12} />
           </button>
           <button
             onClick={handleClear}
             className="p-1.5 rounded hover:bg-[#3c3c3c] text-gray-400 hover:text-white transition-colors"
             title="Clear terminal"
           >
-            <Trash2 size={14} />
+            <Trash2 size={12} />
           </button>
           {onMaximize && (
             <button
@@ -259,11 +328,28 @@ export default function ADEPane({ paneId, onClose, onMaximize, isMaximized }: AD
               className="p-1.5 rounded hover:bg-[#3c3c3c] text-gray-400 hover:text-white transition-colors"
               title="Close terminal"
             >
-              <X size={14} />
+              <X size={12} />
             </button>
           )}
         </div>
       </div>
+
+      {/* Context Menu */}
+      {showContextMenu && (
+        <div
+          className="fixed bg-[#252526] border border-[#3c3c3c] rounded shadow-lg z-50 min-w-40"
+          style={{ left: contextMenuPosition.x, top: contextMenuPosition.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={handleDelete}
+            className="w-full px-3 py-2 text-left text-xs hover:bg-[#e81123] text-red-400 flex items-center gap-2"
+          >
+            <Trash2 size={12} />
+            Delete Terminal
+          </button>
+        </div>
+      )}
 
       {/* Terminal content */}
       <div className="flex-1 overflow-hidden">
@@ -271,13 +357,15 @@ export default function ADEPane({ paneId, onClose, onMaximize, isMaximized }: AD
       </div>
 
       {/* Terminal footer/status */}
-      <div className="h-6 bg-[#252526] border-t border-[#3c3c3c] flex items-center justify-between px-3 text-xs text-gray-500">
-        <div className="flex items-center gap-3">
-          <span>Ready</span>
+      <div className="h-5 bg-[#252526] border-t border-[#3c3c3c] flex items-center justify-between px-2 text-xs text-gray-500">
+        <div className="flex items-center gap-2">
+          <span className={isSpawned ? 'text-green-400' : 'text-yellow-400'}>
+            {isSpawned ? '●' : '○'}
+          </span>
+          <span>{isSpawned ? 'Running' : 'Stopped'}</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <span>UTF-8</span>
-          <span>LF</span>
         </div>
       </div>
     </div>
