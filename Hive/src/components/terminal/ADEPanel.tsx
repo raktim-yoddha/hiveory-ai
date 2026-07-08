@@ -32,6 +32,11 @@ export default function ADEPanel({ layout, workingDir }: ADEPanelProps) {
   };
 
   const getGridColumns = () => {
+    const count = panes.length;
+    if (count === 1) return 'grid-cols-1';
+    if (count === 2) return 'grid-cols-2';
+    if (count <= 4) return 'grid-cols-2';
+    if (count <= 8) return 'grid-cols-4';
     return 'grid-cols-4';
   };
 
@@ -66,9 +71,9 @@ export default function ADEPanel({ layout, workingDir }: ADEPanelProps) {
             />
           </div>
         ) : (
-          <div className={`h-full grid gap-2 ${getGridColumns()}`}>
+          <div className={`grid gap-2 ${getGridColumns()}`} style={{ minHeight: '100%', gridAutoRows: 'minmax(200px, 1fr)' }}>
             {panes.map((paneId) => (
-              <div key={paneId} className="h-full min-h-0 relative">
+              <div key={paneId} className="flex flex-col min-h-0 relative">
                 <TerminalPane
                   paneId={paneId}
                   workingDir={workingDir}

@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { X, Search, Settings, GitBranch, FileCode, Save } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import EditorTerminalPanel from './EditorTerminalPanel';
 
 interface EditorPanelProps {
   openFile: string | null;
+  projectPath?: string | null;
 }
 
 interface OpenTab {
@@ -18,13 +20,15 @@ interface OpenTab {
   content: string;
 }
 
-export default function EditorPanel({ openFile }: EditorPanelProps) {
+export default function EditorPanel({ openFile, projectPath }: EditorPanelProps) {
   const editorRef = useRef<any>(null);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [language, setLanguage] = useState('typescript');
   const [loading, setLoading] = useState(false);
+  const [terminalHeight, setTerminalHeight] = useState(256);
+  const [isResizingTerminal, setIsResizingTerminal] = useState(false);
 
   const getFileIcon = (filename: string) => {
     const ext = filename.split('.').pop()?.toLowerCase();
@@ -114,6 +118,29 @@ export default function EditorPanel({ openFile }: EditorPanelProps) {
     setTabs(tabs.map(t => t.id === activeTab ? { ...t, content: value || '', modified: true } : t));
   };
 
+  const handleTerminalMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingTerminal(true);
+    
+    const startY = e.clientY;
+    const startHeight = terminalHeight;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaY = startY - moveEvent.clientY;
+      const newHeight = Math.max(100, Math.min(window.innerHeight - 200, startHeight + deltaY));
+      setTerminalHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingTerminal(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   return (
     <div className="flex-1 flex flex-col bg-[#1e1e1e]">
       {/* File tabs */}
@@ -145,43 +172,55 @@ export default function EditorPanel({ openFile }: EditorPanelProps) {
         )}
       </div>
 
-      {/* Editor */}
-      <div className="flex-1 relative">
-        {loading ? (
-          <div className="flex items-center justify-center h-full text-gray-500">Loading...</div>
-        ) : (
-          <Editor
-            height="100%"
-            defaultLanguage={language}
-            theme="vs-dark"
-            value={activeTab ? tabs.find(t => t.id === activeTab)?.content : '// Select a file to edit'}
-            onChange={handleEditorChange}
-            onMount={(editor, monaco) => {
-              editorRef.current = editor;
-              editor.onDidChangeCursorPosition((e: any) => {
-                setCursorPosition({ line: e.position.lineNumber, column: e.position.column });
-              });
-            }}
-            options={{
-              minimap: { enabled: true },
-              fontSize: 14,
-              fontFamily: 'JetBrains Mono, Consolas, Monaco, monospace',
-              lineNumbers: 'on',
-              scrollBeyondLastLine: false,
-              renderWhitespace: 'selection',
-              automaticLayout: true,
-              tabSize: 2,
-              wordWrap: 'off',
-              formatOnPaste: true,
-              formatOnType: true,
-              suggest: {
-                showKeywords: true,
-                showSnippets: true,
-              },
-              padding: { top: 10 },
-            }}
-          />
-        )}
+      {/* Editor + Terminal container */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Editor */}
+        <div className="flex-1 relative min-h-0">
+          {loading ? (
+            <div className="flex items-center justify-center h-full text-gray-500">Loading...</div>
+          ) : (
+            <Editor
+              height="100%"
+              defaultLanguage={language}
+              theme="vs-dark"
+              value={activeTab ? tabs.find(t => t.id === activeTab)?.content : '// Select a file to edit'}
+              onChange={handleEditorChange}
+              onMount={(editor, monaco) => {
+                editorRef.current = editor;
+                editor.onDidChangeCursorPosition((e: any) => {
+                  setCursorPosition({ line: e.position.lineNumber, column: e.position.column });
+                });
+              }}
+              options={{
+                minimap: { enabled: true },
+                fontSize: 14,
+                fontFamily: 'JetBrains Mono, Consolas, Monaco, monospace',
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                renderWhitespace: 'selection',
+                automaticLayout: true,
+                tabSize: 2,
+                wordWrap: 'off',
+                formatOnPaste: true,
+                formatOnType: true,
+                suggest: {
+                  showKeywords: true,
+                  showSnippets: true,
+                },
+                padding: { top: 10 },
+              }}
+            />
+          )}
+        </div>
+
+        {/* Resize handle */}
+        <div 
+          className="h-1 bg-[#241f1c] hover:bg-[#c9a227] cursor-ns-resize transition-colors flex-shrink-0"
+          onMouseDown={handleTerminalMouseDown}
+        />
+
+        {/* Terminal Panel */}
+        <EditorTerminalPanel workingDir={projectPath} height={terminalHeight} />
       </div>
     </div>
   );

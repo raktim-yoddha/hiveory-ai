@@ -60,11 +60,26 @@ async fn spawn_terminal(
                 } else if is_powershell {
                     cmd.arg("-NoExit");
                     cmd.arg("-Command");
-                    cmd.arg(&format!("Set-Location '{}';", path_str));
+                    cmd.arg(&format!("Set-Location '{}'", path_str));
                 } else if is_bash_or_wsl {
                     cmd.arg("-c");
                     cmd.arg(&format!("cd \"{}\" && exec $SHELL", path_str));
                 }
+            }
+        }
+    } else {
+        // Default to home directory if no working dir specified
+        if let Ok(home_dir) = std::env::var("USERPROFILE") {
+            if is_cmd {
+                cmd.arg("/k");
+                cmd.arg(&format!("cd /d \"{}\"", home_dir));
+            } else if is_powershell {
+                cmd.arg("-NoExit");
+                cmd.arg("-Command");
+                cmd.arg(&format!("Set-Location '{}'", home_dir));
+            } else if is_bash_or_wsl {
+                cmd.arg("-c");
+                cmd.arg(&format!("cd \"{}\" && exec $SHELL", home_dir));
             }
         }
     }
@@ -271,6 +286,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(pty_system)
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             spawn_terminal,
             write_to_terminal,

@@ -5,6 +5,7 @@ import Sidebar from '@/components/Sidebar';
 import EditorPanel from '@/components/editor/EditorPanel';
 import ADEPanel from '@/components/terminal/ADEPanel';
 import { invoke } from '@tauri-apps/api/core';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import { File, Terminal, Settings, Search, GitBranch, X, Minus, Square, Copy } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -144,6 +145,52 @@ export default function Home() {
     setProjectPath(folderPath);
   };
 
+  const handleNewFile = async () => {
+    try {
+      const filePath = await save({
+        title: 'New File',
+        defaultPath: projectPath || undefined,
+      });
+      if (filePath) {
+        await invoke('write_file', { path: filePath, content: '' });
+        setOpenFile(filePath);
+      }
+    } catch (e) {
+      console.error('Failed to create new file:', e);
+    }
+  };
+
+  const handleOpenFile = async () => {
+    try {
+      const filePath = await open({
+        multiple: false,
+        title: 'Open File',
+      });
+      if (filePath && typeof filePath === 'string') {
+        setOpenFile(filePath);
+      }
+    } catch (e) {
+      console.error('Failed to open file:', e);
+    }
+  };
+
+  const handleOpenFolder = async () => {
+    try {
+      const folderPath = await open({
+        directory: true,
+        multiple: false,
+        title: 'Open Folder',
+      });
+      if (folderPath && typeof folderPath === 'string') {
+        setProjectPath(folderPath);
+        setActiveView('explorer');
+        setSidebarCollapsed(false);
+      }
+    } catch (e) {
+      console.error('Failed to open folder:', e);
+    }
+  };
+
   useEffect(() => {
     if (isResizing) {
       window.addEventListener('mousemove', handleMouseMove);
@@ -160,16 +207,16 @@ export default function Home() {
 
   const menuItems = {
     file: [
-      { label: 'New File', action: () => console.log('New file') },
+      { label: 'New File', action: handleNewFile },
       { label: 'New Window', action: () => console.log('New window') },
-      { label: 'Open File...', action: () => console.log('Open file') },
-      { label: 'Open Folder...', action: () => console.log('Open folder') },
+      { label: 'Open File...', action: handleOpenFile },
+      { label: 'Open Folder...', action: handleOpenFolder },
       { label: '-', action: () => {} },
       { label: 'Save', action: () => console.log('Save') },
       { label: 'Save As...', action: () => console.log('Save as') },
       { label: 'Save All', action: () => console.log('Save all') },
       { label: '-', action: () => {} },
-      { label: 'Exit', action: () => console.log('Exit') },
+      { label: 'Exit', action: handleClose },
     ],
     edit: [
       { label: 'Undo', action: () => console.log('Undo') },
@@ -441,9 +488,9 @@ export default function Home() {
         {/* Main Panel */}
         <div className="flex-1 overflow-hidden">
           {sidebarMode === 'editor' ? (
-            <EditorPanel openFile={openFile} />
+            <EditorPanel openFile={openFile} projectPath={projectPath} />
           ) : (
-            <ADEPanel workingDir={projectPath} />
+            <ADEPanel layout={1} workingDir={projectPath} />
           )}
         </div>
       </div>

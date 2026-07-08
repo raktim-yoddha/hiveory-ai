@@ -244,8 +244,7 @@ export default function TerminalPane({ paneId = 'terminal-1', workingDir }: Term
       {/* Terminal header */}
       <div className="h-8 bg-[#241f1c] border-b border-[#3d2e1f] flex items-center justify-between px-2">
         <div className="flex items-center gap-2">
-          <Terminal size={12} className="text-[#c9a227]" />
-          <span className="text-xs text-[#f5f0e6] font-medium">Terminal {paneId}</span>
+          <span className="text-xs text-[#f5f0e6] font-medium">{paneId}</span>
           
           {/* Terminal selector */}
           <div className="relative">
