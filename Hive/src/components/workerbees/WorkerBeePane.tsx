@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore, envForCli } from "@/stores/settingsStore";
+import { useWorkerBeesStore } from "@/stores/workerBeesStore";
 import { Nectar, type InjectedChunk } from "@/lib/nectar";
 
 // A WorkerBee pane is a CLI agent process (Claude Code, Codex CLI, Aider,
@@ -85,6 +86,17 @@ export default function WorkerBeePane({
 
   const [paneWidth, setPaneWidth] = useState(0);
   const [paneHeight, setPaneHeight] = useState(0);
+  const refitCount = useWorkerBeesStore((s) => s.refitCount);
+
+  // Re-fit xterm whenever a global refit signal fires (tab switch / maximize
+  // restore). Kept separate from the spawn effect so this never re-spawns.
+  useEffect(() => {
+    if (!fitAddonRef.current || !terminalRef.current) return;
+    const rect = terminalRef.current.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      try { fitAddonRef.current.fit(); } catch {}
+    }
+  }, [refitCount]);
 
   const getFontSize = () => {
     if (paneWidth < 280) return 9;

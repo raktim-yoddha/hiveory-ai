@@ -24,6 +24,10 @@ interface WorkerBeesState {
   gridLayout: GridLayout;
   setGridLayout: (layout: GridLayout) => void;
   reorderWorkerBees: (fromIndex: number, toIndex: number) => void;
+  // Incremented whenever visible panels change (tab switch, maximize/minimize)
+  // so xterm panes can watch this and re-fit themselves.
+  refitCount: number;
+  refitTerminals: () => void;
 }
 
 export const useWorkerBeesStore = create<WorkerBeesState>((set) => ({
@@ -52,4 +56,6 @@ export const useWorkerBeesStore = create<WorkerBeesState>((set) => ({
       result.splice(toIndex, 0, removed);
       return { workerBees: result };
     }),
+  refitCount: 0,
+  refitTerminals: () => set((state) => ({ refitCount: state.refitCount + 1 })),
 }));

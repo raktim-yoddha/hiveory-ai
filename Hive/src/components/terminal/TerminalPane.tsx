@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { useWorkerBeesStore } from "../../stores/workerBeesStore";
 
 // Plain shell terminal only — cmd / PowerShell / Git Bash / WSL. CLI agents
 // (Claude Code, Codex CLI, Aider, Gemini CLI, ...) are a separate, standalone
@@ -73,6 +74,18 @@ export default function TerminalPane({
   const [showTerminalMenu, setShowTerminalMenu] = useState(false);
 
   const displayName = tabName || paneId;
+  const refitCount = useWorkerBeesStore((s) => s.refitCount);
+
+  // Re-fit xterm whenever a global refit signal fires (tab switch, maximize/
+  // minimize). We intentionally read refitCount outside the main init effect
+  // so it never causes a terminal respawn.
+  useEffect(() => {
+    if (!fitAddonRef.current || !terminalRef.current) return;
+    const rect = terminalRef.current.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      try { fitAddonRef.current.fit(); } catch {}
+    }
+  }, [refitCount]);
 
   // Pipes data into the spawned process's stdin.
   const writeToProcess = (data: string) => {

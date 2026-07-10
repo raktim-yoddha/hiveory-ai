@@ -60,6 +60,14 @@ export default function HomePage() {
   const addWorkerBee = useWorkerBeesStore((state) => state.addWorkerBee);
   const gridLayout = useWorkerBeesStore((state) => state.gridLayout);
   const setGridLayout = useWorkerBeesStore((state) => state.setGridLayout);
+  const refitTerminals = useWorkerBeesStore((state) => state.refitTerminals);
+
+  // Whenever the user switches tabs, wait one frame for the hidden panel to
+  // become visible then tell all xterm instances to re-fit to the new size.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => refitTerminals());
+    return () => cancelAnimationFrame(id);
+  }, [sidebarMode]);
 
   const [showCLIPicker, setShowCLIPicker] = useState(false);
   const [pickerPosition, setPickerPosition] = useState<{

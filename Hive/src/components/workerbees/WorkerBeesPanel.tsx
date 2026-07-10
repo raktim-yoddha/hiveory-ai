@@ -17,6 +17,7 @@ export default function WorkerBeesPanel({ workingDir }: WorkerBeesPanelProps) {
   const setMaximizedPane = useWorkerBeesStore((state) => state.setMaximizedPane);
   const gridLayout = useWorkerBeesStore((state) => state.gridLayout);
   const reorderWorkerBees = useWorkerBeesStore((state) => state.reorderWorkerBees);
+  const refitTerminals = useWorkerBeesStore((state) => state.refitTerminals);
 
   const [editingBee, setEditingBee] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -47,6 +48,8 @@ export default function WorkerBeesPanel({ workingDir }: WorkerBeesPanelProps) {
 
   const toggleMaximize = (beeId: string) => {
     setMaximizedPane(maximizedPane === beeId ? null : beeId);
+    // Re-fit all terminals one frame after the CSS layout resolves
+    requestAnimationFrame(() => refitTerminals());
   };
 
   const startRename = (beeId: string) => {
