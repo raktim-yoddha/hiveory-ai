@@ -207,6 +207,8 @@ async fn spawn_terminal(
     args: Vec<String>,
     working_dir: Option<String>,
     env: Option<HashMap<String, String>>,
+    rows: Option<u16>,
+    cols: Option<u16>,
     state: State<'_, PtySystem>,
 ) -> Result<String, String> {
     println!("[Rust] spawn_terminal called: pane_id={}, command={}, args={:?}", pane_id, command, args);
@@ -217,25 +219,33 @@ async fn spawn_terminal(
     let command = command.trim().replace('\0', "");
     
     // Check if this is a shell. v1 supports cmd.exe, powershell.exe, bash.exe, wsl.exe.
-    // CLI agents (claude, aider, codex, gemini, etc.) should run directly without cmd.exe wrapping.
     let is_shell = matches!(
         command.as_str(),
         "cmd.exe" | "powershell.exe" | "bash.exe" | "wsl.exe"
     );
-    
-    let mut cmd = if is_shell {
-        // For shells on Windows, use cmd.exe /K to keep them interactive
-        if command == "cmd.exe" {
-            let mut cmd = CommandBuilder::new("cmd.exe");
-            cmd.arg("/K");
-            cmd
-        } else {
-            // For other shells (powershell, bash, wsl), run directly
-            CommandBuilder::new(&command)
-        }
-    } else {
-        // For CLI agents, run the command directly without wrapping
+
+    let mut cmd = if command == "cmd.exe" {
+        // cmd.exe itself: /K keeps it interactive.
+        let mut cmd = CommandBuilder::new("cmd.exe");
+        cmd.arg("/K");
+        cmd
+    } else if is_shell {
+        // Other shells (powershell, bash, wsl) resolve their own binary fine.
         CommandBuilder::new(&command)
+    } else {
+        // CLI agents (claude, codex, gemini, aider, opencode, kimi, cline, ...)
+        // are almost always npm-global installs, which on Windows are `.cmd`/
+        // `.ps1` shim scripts, not raw `.exe`s. CreateProcess (what portable-pty
+        // calls under the hood) does NOT do PATHEXT resolution — only a real
+        // shell does — so spawning "claude" directly fails to find the binary
+        // even though `claude` works fine when typed into a normal terminal.
+        // Route through cmd.exe /K exactly like a user would, so its PATHEXT-
+        // aware command resolution finds the shim and the window stays open
+        // to show a clear error if the CLI genuinely isn't installed.
+        let mut cmd = CommandBuilder::new("cmd.exe");
+        cmd.arg("/K");
+        cmd.arg(&command);
+        cmd
     };
     
     // Set working directory. Use the CommandBuilder's own cwd so we never mutate
@@ -266,21 +276,33 @@ async fn spawn_terminal(
         }
     }
 
+    // Open the pty at the CALLER'S already-fitted size, not a hardcoded
+    // default. Interactive TUIs (Claude Code, Codex CLI, OpenCode, ...) query
+    // the terminal size once at startup and lay out their splash screen for
+    // it; real terminals don't reflow already-drawn content when a later
+    // resize (SIGWINCH) arrives. Spawning at 24x80 and resizing a moment
+    // later — which is what a xterm.js pane inside a large CSS-grid card
+    // actually needs — left the CLI's UI drawn for a tiny terminal, stranded
+    // in the corner of a much bigger pane (the "big empty gap" bug).
     let pty_pair = pty_system
         .openpty(PtySize {
-            rows: 24,
-            cols: 80,
+            rows: rows.unwrap_or(24),
+            cols: cols.unwrap_or(80),
             pixel_width: 0,
             pixel_height: 0,
         })
         .map_err(|e| e.to_string())?;
 
     // Spawn the child, then drop the slave so the master sees EOF when the child exits.
+    println!("[Rust] spawning command inside PTY...");
     let child = pty_pair
         .slave
         .spawn_command(cmd)
         .map_err(|e| e.to_string())?;
     drop(pty_pair.slave);
+
+    let pid = child.process_id();
+    println!("[Rust] successfully spawned process! PID={:?}", pid);
 
     let writer = pty_pair.master.take_writer().map_err(|e| e.to_string())?;
     let reader = pty_pair
@@ -292,18 +314,30 @@ async fn spawn_terminal(
     // the async command handler (portable-pty readers are blocking).
     let output = Arc::new(Mutex::new(String::new()));
     let output_writer = output.clone();
+    let pane_id_clone = pane_id.clone();
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buffer = [0u8; 4096];
+        let start_time = std::time::Instant::now();
         loop {
             match reader.read(&mut buffer) {
-                Ok(0) => break,
+                Ok(0) => {
+                    println!("[Rust PTY Reader - {}] EOF reached", pane_id_clone);
+                    break;
+                }
                 Ok(n) => {
+                    if start_time.elapsed().as_secs() < 5 {
+                        let text = String::from_utf8_lossy(&buffer[..n]);
+                        println!("[Rust PTY Reader Debug - {}] read {} bytes: {:?}", pane_id_clone, n, text);
+                    }
                     if let Ok(mut buf) = output_writer.lock() {
                         buf.push_str(&String::from_utf8_lossy(&buffer[..n]));
                     }
                 }
-                Err(_) => break,
+                Err(e) => {
+                    println!("[Rust PTY Reader - {}] read error: {:?}", pane_id_clone, e);
+                    break;
+                }
             }
         }
     });
@@ -514,6 +548,14 @@ async fn git_status(project_path: String) -> Result<GitStatus, String> {
 async fn nectar_ensure_structure(
     req: NectarEnsureStructureRequest,
 ) -> Result<NectarEnsureStructureResponse, String> {
+    // Synchronize process working directory to the opened folder
+    let path = std::path::Path::new(&req.project_path);
+    if path.exists() && path.is_dir() {
+        std::env::set_current_dir(path)
+            .map_err(|e| format!("Failed to set current directory to {}: {}", req.project_path, e))?;
+        println!("[Rust] Changed process current directory to: {:?}", path);
+    }
+
     let nectar_path = std::path::Path::new(&req.project_path).join(".nectar");
     let dirs = [
         nectar_path.join("memory"),
@@ -795,16 +837,32 @@ async fn nectar_index_file(
         .unwrap()
         .as_millis() as i64;
     
+    // Upsert the memory_files row BEFORE touching chunks — `chunks.source_file`
+    // has a foreign key on `memory_files.id`, so inserting chunks first (the
+    // previous order) fails with "FOREIGN KEY constraint failed" on every
+    // first-time index of a file, which is every file on every fresh index.
+    conn.execute(
+        "INSERT OR REPLACE INTO memory_files (id, path, type, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)",
+        params![
+            &req.relative_path,
+            &req.relative_path,
+            &memory_file.file_type,
+            now,
+            now,
+        ],
+    ).map_err(|e| format!("Failed to update memory file record: {}", e))?;
+
     // Delete existing chunks for this file
     conn.execute(
         "DELETE FROM chunks WHERE source_file = ?",
         params![&req.relative_path],
     ).map_err(|e| format!("Failed to delete old chunks: {}", e))?;
-    
+
     // Insert new chunks
     for (i, chunk) in chunks_response.chunks.iter().enumerate() {
         let chunk_id = format!("{}:{}:{}", req.relative_path, i, now);
-        
+
         conn.execute(
             "INSERT INTO chunks (id, source_file, chunk_index, content, heading, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -820,24 +878,21 @@ async fn nectar_index_file(
         ).map_err(|e| format!("Failed to insert chunk: {}", e))?;
     }
     
-    // Update or insert memory file record
+    // Refresh the FTS rows for just this file. Rebuilding from the WHOLE
+    // `chunks` table (the previous behavior) without clearing first means
+    // every later call re-inserts rowids already indexed by an earlier
+    // call for a DIFFERENT file, which SQLite rejects as a duplicate rowid
+    // — this started surfacing once every WorkerBee spawn began indexing
+    // all memory files, since the second WorkerBee's pass would collide
+    // with rows the first pass already added.
     conn.execute(
-        "INSERT OR REPLACE INTO memory_files (id, path, type, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)",
-        params![
-            &req.relative_path,
-            &req.relative_path,
-            &memory_file.file_type,
-            now,
-            now,
-        ],
-    ).map_err(|e| format!("Failed to update memory file record: {}", e))?;
-    
-    // Rebuild FTS index
+        "DELETE FROM chunks_fts WHERE source_file = ?",
+        params![&req.relative_path],
+    ).map_err(|e| format!("Failed to clear old FTS rows: {}", e))?;
     conn.execute(
         "INSERT INTO chunks_fts (rowid, content, source_file, heading)
-         SELECT rowid, content, source_file, heading FROM chunks",
-        [],
+         SELECT rowid, content, source_file, heading FROM chunks WHERE source_file = ?",
+        params![&req.relative_path],
     ).map_err(|e| format!("Failed to rebuild FTS index: {}", e))?;
     
     Ok(NectarIndexFileResponse {
@@ -882,7 +937,7 @@ async fn nectar_search(
         let (content, source_file, heading, score) = row.map_err(|e| e.to_string())?;
         
         // Convert BM25 score to a 0-1 range (BM25 is typically 0-10, lower is better)
-        let normalized_score = 1.0 / (1.0 + score);
+        let normalized_score = 1.0 - (1.0 / (1.0 + score.abs()));
         
         if normalized_score >= min_score {
             results.push(SearchResult {

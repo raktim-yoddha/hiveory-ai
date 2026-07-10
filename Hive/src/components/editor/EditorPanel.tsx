@@ -124,9 +124,14 @@ export default function EditorPanel({
 
   const closeTab = (tabId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setTabs(tabs.filter((t) => t.id !== tabId));
+    const closedIndex = tabs.findIndex((t) => t.id === tabId);
+    const remaining = tabs.filter((t) => t.id !== tabId);
+    setTabs(remaining);
     if (activeTab === tabId) {
-      setActiveTab(tabs.length > 1 ? tabs[tabs.length - 2].id : null);
+      // Prefer the tab that slides into the closed one's slot (the next
+      // tab, or the new last tab if we closed the last one).
+      const next = remaining[Math.min(closedIndex, remaining.length - 1)];
+      setActiveTab(next?.id ?? null);
     }
   };
 
@@ -161,20 +166,34 @@ export default function EditorPanel({
     );
   };
 
-  // Autosave effect
+  // Autosave effect. The interval intentionally does NOT depend on `tabs` —
+  // it used to, which tore down and recreated the timer on every keystroke,
+  // so autosave only ever fired if you stopped typing continuously for the
+  // full interval. Refs let the timer stay alive across edits while still
+  // always saving the latest content.
+  const tabsRef = useRef(tabs);
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
+
+  const saveFileRef = useRef(saveFile);
+  useEffect(() => {
+    saveFileRef.current = saveFile;
+  });
+
   useEffect(() => {
     if (!autosaveEnabled) return;
 
     const interval = setInterval(() => {
-      tabs.forEach((tab) => {
+      tabsRef.current.forEach((tab) => {
         if (tab.modified && tab.saveState === 'unsaved') {
-          saveFile(tab.id);
+          saveFileRef.current(tab.id);
         }
       });
     }, autosaveInterval);
 
     return () => clearInterval(interval);
-  }, [tabs, autosaveEnabled, autosaveInterval]);
+  }, [autosaveEnabled, autosaveInterval]);
 
   // Keyboard shortcuts
   useEffect(() => {

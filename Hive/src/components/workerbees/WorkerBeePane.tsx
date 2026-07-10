@@ -6,24 +6,35 @@ import { FitAddon } from "xterm-addon-fit";
 import { SearchAddon } from "xterm-addon-search";
 import { WebglAddon } from "xterm-addon-webgl";
 import {
-  Terminal,
-  ChevronDown,
   Copy,
   Trash2,
   Eraser,
   Maximize2,
   Minimize2,
-  X,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { useSettingsStore, envForCli } from "@/stores/settingsStore";
+import { Nectar, type InjectedChunk } from "@/lib/nectar";
 
-// Plain shell terminal only — cmd / PowerShell / Git Bash / WSL. CLI agents
-// (Claude Code, Codex CLI, Aider, Gemini CLI, ...) are a separate, standalone
-// feature; see components/workerbees/WorkerBeePane.tsx for that.
-interface TerminalPaneProps {
-  paneId?: string;
+// A WorkerBee pane is a CLI agent process (Claude Code, Codex CLI, Aider,
+// Gemini CLI, OpenCode, Kimi Code, Cline, ...) — a fundamentally different
+// thing from a plain shell terminal (see components/terminal/TerminalPane).
+// It's wired to inject Nectar project memory and pass provider API keys, and
+// it has no concept of "which shell" — it's always exactly one CLI command.
+export interface WorkerBeeInfo {
+  id: string;
+  cli: string;
+  cliName: string;
+  customName?: string;
+  args?: string[];
+}
+
+interface WorkerBeePaneProps {
+  paneId: string;
   workingDir?: string | null;
-  tabName?: string;
+  workerBee: WorkerBeeInfo;
   onClose?: () => void;
   onToggleMaximize?: () => void;
   isMaximized?: boolean;
@@ -32,29 +43,29 @@ interface TerminalPaneProps {
   editValue?: string;
   onEditChange?: (value: string) => void;
   onCancelRename?: () => void;
-  closeIconType?: "trash" | "close";
 }
 
-type TerminalType = "cmd" | "powershell" | "git-bash" | "wsl";
+// How long to wait with zero output before hinting that the CLI might not be
+// installed, rather than leaving the user staring at an ambiguous spinner.
+const STALL_HINT_MS = 8000;
 
-const TERMINAL_LABELS: Record<TerminalType, string> = {
-  cmd: "CMD",
-  powershell: "PowerShell",
-  "git-bash": "Git Bash",
-  wsl: "WSL",
-};
+// A freshly-scaffolded memory file is just its placeholder HTML comment —
+// FTS5 will happily "match" that noise against broad keywords. AGENTS.md
+// §4.2.4: "if nothing clears a minimum relevance threshold, inject nothing."
+function isMeaningfulChunk(content: string): boolean {
+  return content.replace(/<!--[\s\S]*?-->/g, "").trim().length > 0;
+}
 
-const TERMINAL_COMMANDS: Record<TerminalType, string> = {
-  cmd: "cmd.exe",
-  powershell: "powershell.exe",
-  "git-bash": "bash.exe",
-  wsl: "wsl.exe",
-};
+// No per-turn task prompt exists yet at launch time, so the bootstrap query
+// is keyword-rich enough to surface whatever general project context exists
+// (overview, conventions, past decisions, known bugs) via FTS5 keyword match.
+const BOOTSTRAP_QUERY =
+  "project overview architecture conventions decisions patterns bugs knowledge";
 
-export default function TerminalPane({
-  paneId = "terminal-1",
+export default function WorkerBeePane({
+  paneId,
   workingDir,
-  tabName,
+  workerBee,
   onClose,
   onToggleMaximize,
   isMaximized,
@@ -63,18 +74,17 @@ export default function TerminalPane({
   editValue,
   onEditChange,
   onCancelRename,
-  closeIconType = "trash",
-}: TerminalPaneProps) {
+}: WorkerBeePaneProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminalInstance = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const [, setIsSpawned] = useState(false);
-  const [selectedTerminal, setSelectedTerminal] = useState<TerminalType>("powershell");
-  const [showTerminalMenu, setShowTerminalMenu] = useState(false);
+  const [spawnState, setSpawnState] = useState<"connecting" | "running" | "error">("connecting");
+  const [stalled, setStalled] = useState(false);
+  const apiKeys = useSettingsStore((s) => s.apiKeys);
+  const nectarTokenBudget = useSettingsStore((s) => s.nectarTokenBudget);
 
-  const displayName = tabName || paneId;
+  const displayName = workerBee.customName || workerBee.cliName;
 
-  // Pipes data into the spawned process's stdin.
   const writeToProcess = (data: string) => {
     invoke("write_to_terminal", { paneId, data }).catch((e) =>
       console.error(`write_to_terminal failed for ${paneId}:`, e),
@@ -90,7 +100,11 @@ export default function TerminalPane({
     let onDataDisposable: { dispose: () => void } | null = null;
     let handleResize: (() => void) | null = null;
     let observerRef: ResizeObserver | null = null;
+    let stallTimer: ReturnType<typeof setTimeout> | null = null;
     let resizeDebounce: ReturnType<typeof setTimeout> | null = null;
+    setSpawnState("connecting");
+    setStalled(false);
+
     let spawned = false;
 
     const hasValidSize = () => {
@@ -103,12 +117,11 @@ export default function TerminalPane({
       if (spawned || disposed || !terminal) return;
       spawned = true;
 
-      // Get working directory
       let spawnDir = workingDir;
       if (!spawnDir) {
         try {
           spawnDir = await invoke<string>("get_project_path");
-        } catch (e) {
+        } catch {
           try {
             spawnDir = await invoke<string>("get_home_dir");
           } catch (e2) {
@@ -117,33 +130,52 @@ export default function TerminalPane({
         }
       }
 
-      // Spawn terminal
       try {
-        const command = TERMINAL_COMMANDS[selectedTerminal];
+        const command = workerBee.cli;
+        const args = workerBee.args || [];
+        const env = envForCli(command, apiKeys);
         const { rows, cols } = terminal;
 
         await invoke("spawn_terminal", {
           paneId,
           command,
-          args: [],
+          args,
           workingDir: spawnDir,
+          env,
           rows,
           cols,
         });
 
         if (disposed || !terminal) return;
-        setIsSpawned(true);
 
-        // Start reading output. Guard on `disposed` (a stable closure var),
-        // not on React state, so the loop actually runs until unmount.
+        stallTimer = setTimeout(() => {
+          if (!disposed) setStalled(true);
+        }, STALL_HINT_MS);
+
         const readOutput = async () => {
           while (!disposed) {
             try {
-              const output = await invoke<string>("read_from_terminal", {
-                paneId,
-              });
+              const output = await invoke<string>("read_from_terminal", { paneId });
               if (output && !disposed && terminal) {
                 terminal.write(output);
+                setSpawnState("running");
+                setStalled(false);
+                if (stallTimer) {
+                  clearTimeout(stallTimer);
+                  stallTimer = null;
+                }
+
+                // Debug print the active xterm.js buffer lines
+                console.log(`[xterm buffer debug - ${paneId}]`);
+                for (let i = 0; i < Math.min(25, terminal.buffer.active.length); i++) {
+                  const line = terminal.buffer.active.getLine(i);
+                  if (line) {
+                    const lineText = line.translateToString(true).trim();
+                    if (lineText) {
+                      console.log(`  Line ${i}: "${lineText}"`);
+                    }
+                  }
+                }
               }
             } catch (e) {
               console.error("Read error:", e);
@@ -153,10 +185,65 @@ export default function TerminalPane({
           }
         };
         readOutput();
+
+        // WorkerBees are forced through Nectar retrieval per AGENTS.md
+        // §4.2: read project memory (via the real FTS5-backed index, not a
+        // hand-rolled file concatenation), inject it as the agent's first
+        // turn, and log what was retrieved for audit. Runs in the
+        // background so it never delays the terminal becoming usable.
+        if (spawnDir) {
+          (async () => {
+            try {
+              const nectar = await Nectar.create(spawnDir!);
+              const { files } = await nectar.listMemoryFiles();
+              for (const file of files) {
+                await nectar.indexFile(file);
+              }
+
+              const injectResp = await nectar.inject(BOOTSTRAP_QUERY, [], undefined, {
+                max_tokens: nectarTokenBudget,
+                max_chunks: 20,
+                min_score: 0,
+              });
+              const meaningful: InjectedChunk[] = injectResp.chunks.filter((c) =>
+                isMeaningfulChunk(c.content),
+              );
+              if (meaningful.length === 0 || disposed || !terminal) return;
+
+              const { formatted_text } = await nectar.formatContext(
+                workerBee.cli,
+                meaningful,
+              );
+              if (!formatted_text || disposed || !terminal) return;
+
+              // Give the CLI a moment to boot its input prompt before
+              // typing into its stdin.
+              await new Promise((resolve) => setTimeout(resolve, 1200));
+              if (disposed || !terminal) return;
+
+              terminal.writeln(
+                `\x1b[38;5;178m[nectar] injecting ${meaningful.length} chunk(s) from project memory\x1b[0m`,
+              );
+              writeToProcess(formatted_text + "\r");
+
+              await nectar.logSession(
+                paneId,
+                workerBee.cli,
+                BOOTSTRAP_QUERY,
+                injectResp.query,
+                meaningful,
+                injectResp.total_tokens,
+              );
+            } catch (e) {
+              console.error("Nectar injection failed:", e);
+            }
+          })();
+        }
       } catch (e) {
         if (!disposed && terminal) {
-          terminal.writeln(`\x1b[31mFailed to spawn terminal: ${e}\x1b[0m`);
+          terminal.writeln(`\x1b[31mFailed to spawn ${displayName}: ${e}\x1b[0m`);
         }
+        if (!disposed) setSpawnState("error");
       }
     };
 
@@ -196,7 +283,7 @@ export default function TerminalPane({
           },
           allowTransparency: false,
           rightClickSelectsWord: true,
-          scrollback: 1000,
+          scrollback: 2000,
         };
 
         terminal = new XTerm(options);
@@ -210,12 +297,11 @@ export default function TerminalPane({
         terminal.open(terminalRef.current!);
         terminalInstance.current = terminal;
 
-        // Try to load WebGL addon for better performance, fall back gracefully
         try {
           webglAddon = new WebglAddon();
           terminal.loadAddon(webglAddon);
         } catch (e) {
-          console.warn('[TerminalPane] WebGL addon not available, using canvas renderer:', e);
+          console.warn("[WorkerBeePane] WebGL addon not available, using canvas renderer:", e);
         }
 
         const fit = () => {
@@ -224,14 +310,14 @@ export default function TerminalPane({
             fitAddon.fit();
             return true;
           } catch (e) {
-            console.warn("[TerminalPane] fit() failed:", e);
+            console.warn("[WorkerBeePane] fit() failed:", e);
             return false;
           }
         };
-
         const syncSize = () => {
           if (disposed || !terminal) return;
           const { rows, cols } = terminal;
+          console.log(`[WorkerBeePane - ${paneId}] syncSize: rows=${rows}, cols=${cols}, proposed=`, fitAddonRef.current?.proposeDimensions());
           invoke("resize_terminal", { paneId, rows, cols }).catch(console.error);
         };
 
@@ -251,12 +337,10 @@ export default function TerminalPane({
           }, 150);
         };
 
-        // Pipe user keystrokes into the process's stdin.
         onDataDisposable = terminal.onData((data) => {
           writeToProcess(data);
         });
 
-        // Keep the terminal fitted to its container on window resize
         handleResize = fitAndSync;
         window.addEventListener("resize", handleResize);
 
@@ -264,10 +348,9 @@ export default function TerminalPane({
         resizeObserver.observe(terminalRef.current!);
         observerRef = resizeObserver;
 
-        // Trigger once to capture initial state if already laid out
         fitAndSync();
       } catch (e) {
-        console.error("Failed to initialize terminal:", e);
+        console.error("Failed to initialize WorkerBee pane:", e);
       }
     };
 
@@ -275,70 +358,43 @@ export default function TerminalPane({
 
     return () => {
       disposed = true;
+      if (stallTimer) clearTimeout(stallTimer);
       if (resizeDebounce) clearTimeout(resizeDebounce);
       if (handleResize) window.removeEventListener("resize", handleResize);
       observerRef?.disconnect();
       onDataDisposable?.dispose();
 
-      // Dispose WebGL addon first, wrapped in try/catch
-      // This is a known issue with xterm-addon-webgl: dispose() can throw
-      // if the WebGL context was lost or never fully initialized
       try {
-        if (webglAddon) {
-          webglAddon.dispose();
-          webglAddon = null;
-        }
+        webglAddon?.dispose();
       } catch (e) {
-        console.warn('[TerminalPane] Failed to dispose WebGL addon:', e);
+        console.warn("[WorkerBeePane] Failed to dispose WebGL addon:", e);
       }
 
-      // Then dispose the terminal
       try {
-        if (terminal) {
-          terminal.dispose();
-        }
+        terminal?.dispose();
       } catch (e) {
-        console.warn('[TerminalPane] Failed to dispose terminal:', e);
+        console.warn("[WorkerBeePane] Failed to dispose terminal:", e);
       } finally {
-        // Always clear the ref even if disposal throws
         terminalInstance.current = null;
-        setIsSpawned(false);
       }
     };
-  }, [paneId, selectedTerminal, workingDir]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneId, workerBee.cli, workingDir]);
 
   const handleCopy = () => {
-    if (terminalInstance.current) {
-      const selection = terminalInstance.current.getSelection();
-      if (selection) {
-        navigator.clipboard.writeText(selection);
-      }
-    }
+    const selection = terminalInstance.current?.getSelection();
+    if (selection) navigator.clipboard.writeText(selection);
   };
 
   const handleClear = () => {
-    if (terminalInstance.current) {
-      terminalInstance.current.clear();
-    }
+    terminalInstance.current?.clear();
   };
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest(".dropdown-menu")) {
-        setShowTerminalMenu(false);
-      }
-    };
-
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, []);
 
   return (
     <div className="flex flex-col h-full bg-[#1a1614]/85 overflow-hidden">
-      {/* terminal header */}
+      {/* pane header */}
       <div className="h-8 glass-toolbar border-b border-bee-border/50 flex items-center justify-between px-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {isEditing && onEditChange ? (
             <input
               type="text"
@@ -346,8 +402,8 @@ export default function TerminalPane({
               onChange={(e) => onEditChange(e.target.value)}
               onBlur={onRename}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') onRename?.();
-                if (e.key === 'Escape') onCancelRename?.();
+                if (e.key === "Enter") onRename?.();
+                if (e.key === "Escape") onCancelRename?.();
               }}
               onClick={(e) => e.stopPropagation()}
               className="bg-bee-canvas text-bee-text px-2 py-0.5 rounded-md text-xs w-32 focus:outline-none focus:ring-1 focus:ring-bee-gold border border-bee-border"
@@ -356,58 +412,29 @@ export default function TerminalPane({
           ) : (
             <span
               onDoubleClick={onRename}
-              className="text-xs text-bee-text font-medium cursor-pointer hover:text-bee-gold transition-colors"
+              className="flex items-center gap-1.5 text-xs text-bee-text font-medium cursor-pointer hover:text-bee-gold transition-colors truncate"
             >
+              <span
+                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                  spawnState === "error"
+                    ? "bg-bee-err"
+                    : spawnState === "connecting"
+                      ? "bg-bee-warn animate-pulse"
+                      : "bg-bee-gold shadow-glow"
+                }`}
+                title={
+                  spawnState === "error"
+                    ? "Failed to start"
+                    : spawnState === "connecting"
+                      ? "Starting…"
+                      : "Running"
+                }
+              />
               {displayName}
             </span>
           )}
-
-          <div className="relative">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowTerminalMenu(!showTerminalMenu);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-bee-canvas/70 border border-bee-border hover:border-bee-gold/60 text-bee-textDim hover:text-bee-text transition-all"
-            >
-              <Terminal size={11} className="text-bee-gold" />
-              {TERMINAL_LABELS[selectedTerminal]}
-              <ChevronDown size={10} className="text-bee-textMuted" />
-            </button>
-            {showTerminalMenu && (
-              <div className="dropdown-menu absolute left-0 top-8 glass-hi rounded-xl z-20 min-w-40 p-1 animate-fade-in">
-                <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-bee-gold font-semibold">
-                  Terminal Type
-                </div>
-                {(Object.keys(TERMINAL_LABELS) as TerminalType[]).map(
-                  (terminal) => (
-                    <button
-                      key={terminal}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedTerminal(terminal);
-                        setShowTerminalMenu(false);
-                        setIsSpawned(false);
-                      }}
-                      className={`w-full px-2.5 py-1.5 text-left text-xs rounded-lg flex items-center gap-2 transition-colors ${selectedTerminal === terminal ? "bg-bee-gold/15 text-bee-goldHi" : "text-bee-textDim hover:bg-bee-border/50 hover:text-bee-text"}`}
-                    >
-                      <Terminal
-                        size={11}
-                        className={
-                          selectedTerminal === terminal
-                            ? "text-bee-gold"
-                            : "text-bee-textMuted"
-                        }
-                      />
-                      {TERMINAL_LABELS[terminal]}
-                    </button>
-                  ),
-                )}
-              </div>
-            )}
-          </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-shrink-0">
           {onToggleMaximize && (
             <button
               onClick={onToggleMaximize}
@@ -438,9 +465,9 @@ export default function TerminalPane({
                 onClose();
               }}
               className="p-1.5 rounded-md text-bee-textDim hover:bg-bee-err/25 hover:text-bee-err transition-colors"
-              title={closeIconType === "close" ? "Collapse terminal" : "Close terminal"}
+              title="Delete WorkerBee"
             >
-              {closeIconType === "close" ? <X size={12} /> : <Trash2 size={12} />}
+              <Trash2 size={12} />
             </button>
           )}
         </div>
@@ -452,6 +479,32 @@ export default function TerminalPane({
         style={{ contain: "layout paint" }}
       >
         <div ref={terminalRef} className="absolute inset-2 overflow-hidden" />
+        {spawnState !== "running" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none bg-bee-canvas/70 backdrop-blur-[2px] animate-fade-in px-4 text-center">
+            {spawnState === "error" ? (
+              <>
+                <AlertTriangle size={18} className="text-bee-err" />
+                <span className="text-xs text-bee-textDim">
+                  {displayName} failed to start
+                </span>
+              </>
+            ) : (
+              <>
+                <Loader2 size={18} className="text-bee-gold animate-spin" />
+                <span className="text-xs text-bee-textMuted">
+                  Starting {displayName}…
+                </span>
+                {stalled && (
+                  <span className="text-[11px] text-bee-warn max-w-[220px]">
+                    Still nothing after {STALL_HINT_MS / 1000}s — is{" "}
+                    <code className="font-mono">{workerBee.cli}</code> installed
+                    and on your PATH?
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

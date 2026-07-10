@@ -1,5 +1,9 @@
 import { create } from "zustand";
 
+// WorkerBees are a standalone feature (AGENTS.md §5): CLI agent processes
+// wired to Nectar, not plain shell terminals. This store only ever holds
+// WorkerBee state — the plain-terminal UI in `components/terminal/` doesn't
+// use it at all.
 export interface WorkerBee {
   id: string;
   cli: string;
@@ -10,7 +14,7 @@ export interface WorkerBee {
 
 export type GridLayout = "auto" | 1 | 2 | 3 | 4;
 
-interface TerminalState {
+interface WorkerBeesState {
   workerBees: WorkerBee[];
   addWorkerBee: (workerBee: WorkerBee) => void;
   removeWorkerBee: (beeId: string) => void;
@@ -21,7 +25,7 @@ interface TerminalState {
   setGridLayout: (layout: GridLayout) => void;
 }
 
-export const useTerminalStore = create<TerminalState>((set) => ({
+export const useWorkerBeesStore = create<WorkerBeesState>((set) => ({
   workerBees: [],
   addWorkerBee: (workerBee) =>
     set((state) => ({ workerBees: [...state.workerBees, workerBee] })),

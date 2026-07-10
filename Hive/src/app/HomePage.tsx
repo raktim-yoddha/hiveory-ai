@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import EditorPanel from "@/components/editor/EditorPanel";
-import ADEPanel from "@/components/terminal/ADEPanel";
-import CLIPicker, { CLIType, CLI_COMMANDS } from "@/components/terminal/CLIPicker";
+import WorkerBeesPanel from "@/components/workerbees/WorkerBeesPanel";
+import CLIPicker, { CLIType, CLI_COMMANDS } from "@/components/workerbees/CLIPicker";
 import SettingsModal from "@/components/SettingsModal";
-import { useTerminalStore, WorkerBee, GridLayout } from "@/stores/terminalStore";
+import { useWorkerBeesStore, WorkerBee, GridLayout } from "@/stores/workerBeesStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { getTauriAPIs, loadTauriAPIs } from "@/lib/tauri";
 import {
   File,
@@ -20,6 +21,8 @@ import {
   Copy,
   Plus,
   LayoutGrid,
+  Check,
+  FolderOpen,
 } from "lucide-react";
 
 const LAYOUT_OPTIONS: { value: GridLayout; label: string }[] = [
@@ -50,10 +53,13 @@ export default function HomePage() {
   } | null>(null);
   const windowRef = useRef<any>(null);
 
-  const workerBees = useTerminalStore((state) => state.workerBees);
-  const addWorkerBee = useTerminalStore((state) => state.addWorkerBee);
-  const gridLayout = useTerminalStore((state) => state.gridLayout);
-  const setGridLayout = useTerminalStore((state) => state.setGridLayout);
+  const autosaveEnabled = useSettingsStore((s) => s.autosaveEnabled);
+  const setAutosaveEnabled = useSettingsStore((s) => s.setAutosaveEnabled);
+
+  const workerBees = useWorkerBeesStore((state) => state.workerBees);
+  const addWorkerBee = useWorkerBeesStore((state) => state.addWorkerBee);
+  const gridLayout = useWorkerBeesStore((state) => state.gridLayout);
+  const setGridLayout = useWorkerBeesStore((state) => state.setGridLayout);
 
   const [showCLIPicker, setShowCLIPicker] = useState(false);
   const [pickerPosition, setPickerPosition] = useState<{
@@ -61,6 +67,7 @@ export default function HomePage() {
     y: number;
   } | null>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
+  const cliPickerContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const initializeWindow = async () => {
@@ -101,10 +108,16 @@ export default function HomePage() {
       ) {
         setActiveMenu(null);
       }
-      // Close CLIPicker when clicking outside
+    };
+
+    // Real DOM containment via a ref, checked on mousedown (fires before the
+    // Add button's own click handler), instead of matching CSS class names —
+    // that approach missed clicks landing anywhere that wasn't tagged with
+    // the exact expected class/attribute and left the picker stuck open.
+    const handlePickerOutside = (e: MouseEvent) => {
       if (
-        !target.closest(".dropdown-menu") &&
-        !target.closest('[data-cli-picker="true"]')
+        cliPickerContainerRef.current &&
+        !cliPickerContainerRef.current.contains(e.target as Node)
       ) {
         setShowCLIPicker(false);
       }
@@ -112,9 +125,11 @@ export default function HomePage() {
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("click", handleClickOutside);
+    window.addEventListener("mousedown", handlePickerOutside);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("click", handleClickOutside);
+      window.removeEventListener("mousedown", handlePickerOutside);
     };
   }, [sidebarMode, sidebarCollapsed]);
 
@@ -349,6 +364,12 @@ export default function HomePage() {
       { label: "Save As...", action: () => console.log("Save as") },
       { label: "Save All", action: () => console.log("Save all") },
       { label: "-", action: () => {} },
+      {
+        label: "Autosave",
+        action: () => setAutosaveEnabled(!autosaveEnabled),
+        checked: autosaveEnabled,
+      },
+      { label: "-", action: () => {} },
       { label: "Exit", action: handleClose },
     ],
     edit: [
@@ -432,8 +453,6 @@ export default function HomePage() {
       },
     ],
     terminal: [
-      { label: "New WorkerBee", action: () => setSidebarMode("ade") },
-      { label: "-", action: () => {} },
       { label: "Clear terminal", action: () => console.log("Clear terminal") },
       { label: "-", action: () => {} },
       {
@@ -538,8 +557,13 @@ export default function HomePage() {
                                 item.action();
                                 setActiveMenu(null);
                               }}
-                              className="w-full px-3 py-1.5 text-left text-xs rounded-lg hover:bg-bee-gold/15 hover:text-bee-goldHi text-bee-textDim transition-colors"
+                              className="w-full px-3 py-1.5 text-left text-xs rounded-lg hover:bg-bee-gold/15 hover:text-bee-goldHi text-bee-textDim transition-colors flex items-center gap-2"
                             >
+                              <span className="w-3 flex-shrink-0">
+                                {"checked" in item && item.checked && (
+                                  <Check size={12} className="text-bee-gold" />
+                                )}
+                              </span>
                               {item.label}
                             </button>
                           ),
@@ -559,6 +583,23 @@ export default function HomePage() {
               <span className="text-[11px] font-medium text-bee-gold bg-bee-gold/10 border border-bee-gold/20 px-2 py-0.5 rounded-full flex-shrink-0">
                 {workerBees.length}/16
               </span>
+
+              {/* Same folder picker + handleFolderSelect as Editor's File >
+                  Open Folder — both write the same projectPath state in
+                  HomePage, so picking a project here also updates the
+                  Editor's explorer, and vice versa. */}
+              <button
+                onClick={handleOpenFolder}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs glass border-bee-border/70 text-bee-textDim hover:text-bee-text transition-colors min-w-0 flex-shrink"
+                title={projectPath || "Open a project folder"}
+              >
+                <FolderOpen size={12} className="text-bee-gold flex-shrink-0" />
+                <span className="truncate max-w-[140px]">
+                  {projectPath
+                    ? projectPath.split(/[\\/]/).filter(Boolean).pop()
+                    : "Open Project"}
+                </span>
+              </button>
 
               <div className="flex items-center p-0.5 rounded-lg glass border-bee-border/70">
                 {LAYOUT_OPTIONS.map((opt) => (
@@ -585,24 +626,25 @@ export default function HomePage() {
                 ))}
               </div>
 
-              <button
-                ref={addButtonRef}
-                onClick={handleAddButtonClick}
-                disabled={workerBees.length >= 16}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-bee-gold/10 border border-bee-gold/20 text-bee-goldHi hover:bg-bee-gold/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-                title="Add new WorkerBee"
-                data-cli-picker="true"
-              >
-                <Plus size={13} />
-                Add
-              </button>
-              {showCLIPicker && pickerPosition && (
-                <CLIPicker
-                  position={pickerPosition}
-                  onSelect={handleCLISelect}
-                  onClose={() => setShowCLIPicker(false)}
-                />
-              )}
+              <div ref={cliPickerContainerRef} className="flex-shrink-0">
+                <button
+                  ref={addButtonRef}
+                  onClick={handleAddButtonClick}
+                  disabled={workerBees.length >= 16}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-bee-gold/10 border border-bee-gold/20 text-bee-goldHi hover:bg-bee-gold/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Add new WorkerBee"
+                >
+                  <Plus size={13} />
+                  Add
+                </button>
+                {showCLIPicker && pickerPosition && (
+                  <CLIPicker
+                    position={pickerPosition}
+                    onSelect={handleCLISelect}
+                    onClose={() => setShowCLIPicker(false)}
+                  />
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -745,7 +787,7 @@ export default function HomePage() {
           {sidebarMode === "editor" ? (
             <EditorPanel openFile={openFile} projectPath={projectPath} />
           ) : (
-            <ADEPanel workingDir={projectPath} />
+            <WorkerBeesPanel workingDir={projectPath} />
           )}
         </div>
       </div>

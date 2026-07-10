@@ -20,9 +20,6 @@ importers:
       '@hiveory/nectar':
         specifier: workspace:*
         version: link:../Nectar
-      '@hiveory/nectar-api':
-        specifier: workspace:*
-        version: link:../NectarAPI
       '@hiveory/worker-bees':
         specifier: workspace:*
         version: link:../WorkerBees

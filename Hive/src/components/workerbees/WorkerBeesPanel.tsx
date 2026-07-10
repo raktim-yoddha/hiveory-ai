@@ -1,21 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import TerminalPane from "./TerminalPane";
+import WorkerBeePane from "./WorkerBeePane";
 import { invoke } from "@tauri-apps/api/core";
-import { useTerminalStore } from "../../stores/terminalStore";
+import { useWorkerBeesStore } from "@/stores/workerBeesStore";
 
-interface ADEPanelProps {
+interface WorkerBeesPanelProps {
   workingDir?: string | null;
 }
 
-export default function ADEPanel({ workingDir }: ADEPanelProps) {
-  const workerBees = useTerminalStore((state) => state.workerBees);
-  const removeWorkerBee = useTerminalStore((state) => state.removeWorkerBee);
-  const updateWorkerBee = useTerminalStore((state) => state.updateWorkerBee);
-  const maximizedPane = useTerminalStore((state) => state.maximizedPane);
-  const setMaximizedPane = useTerminalStore((state) => state.setMaximizedPane);
-  const gridLayout = useTerminalStore((state) => state.gridLayout);
+export default function WorkerBeesPanel({ workingDir }: WorkerBeesPanelProps) {
+  const workerBees = useWorkerBeesStore((state) => state.workerBees);
+  const removeWorkerBee = useWorkerBeesStore((state) => state.removeWorkerBee);
+  const updateWorkerBee = useWorkerBeesStore((state) => state.updateWorkerBee);
+  const maximizedPane = useWorkerBeesStore((state) => state.maximizedPane);
+  const setMaximizedPane = useWorkerBeesStore((state) => state.setMaximizedPane);
+  const gridLayout = useWorkerBeesStore((state) => state.gridLayout);
 
   const [editingBee, setEditingBee] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -24,19 +24,19 @@ export default function ADEPanel({ workingDir }: ADEPanelProps) {
   // mounted in the tree, so a missing row can be diagnosed as CSS vs. data.
   useEffect(() => {
     console.log(
-      `[ADE] ${workerBees.length} WorkerBee(s) mounted, layout=${gridLayout}:`,
+      `[WorkerBees] ${workerBees.length} bee(s) mounted, layout=${gridLayout}:`,
       workerBees.map((b) => b.id),
     );
   }, [workerBees, gridLayout]);
 
   const handleRemoveWorkerBee = (beeId: string) => {
-    // Kill the terminal process first
+    // Kill the pty process first
     invoke("kill_terminal", { paneId: beeId })
       .then(() => {
         removeWorkerBee(beeId);
       })
       .catch((error) => {
-        console.error(`Failed to kill terminal: ${beeId}`, error);
+        console.error(`Failed to kill WorkerBee: ${beeId}`, error);
         // Still remove the pane even if kill fails
         removeWorkerBee(beeId);
       });
@@ -86,7 +86,6 @@ export default function ADEPanel({ workingDir }: ADEPanelProps) {
 
   return (
     <div className="flex-1 flex flex-col bg-bee-canvas/40 relative">
-      {/* ADE panes - Grid layout */}
       <div className="flex-1 min-h-0 p-2 overflow-y-auto">
         {workerBees.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-center animate-fade-in">
@@ -103,36 +102,42 @@ export default function ADEPanel({ workingDir }: ADEPanelProps) {
           </div>
         ) : maximizedPane ? (
           <div className="h-full overflow-hidden rounded-xl glass shadow-glass">
-            <TerminalPane
-              paneId={maximizedPane}
-              workingDir={workingDir}
-              workerBee={workerBees.find((b) => b.id === maximizedPane)}
-              onRename={
-                editingBee === maximizedPane
-                  ? saveRename
-                  : () => startRename(maximizedPane)
-              }
-              isEditing={editingBee === maximizedPane}
-              editValue={editValue}
-              onEditChange={setEditValue}
-              onCancelRename={cancelRename}
-              onClose={() => handleRemoveWorkerBee(maximizedPane)}
-              onToggleMaximize={() => toggleMaximize(maximizedPane)}
-              isMaximized={true}
-            />
+            {(() => {
+              const bee = workerBees.find((b) => b.id === maximizedPane);
+              if (!bee) return null;
+              return (
+                <WorkerBeePane
+                  paneId={maximizedPane}
+                  workingDir={workingDir}
+                  workerBee={bee}
+                  onRename={
+                    editingBee === maximizedPane
+                      ? saveRename
+                      : () => startRename(maximizedPane)
+                  }
+                  isEditing={editingBee === maximizedPane}
+                  editValue={editValue}
+                  onEditChange={setEditValue}
+                  onCancelRename={cancelRename}
+                  onClose={() => handleRemoveWorkerBee(maximizedPane)}
+                  onToggleMaximize={() => toggleMaximize(maximizedPane)}
+                  isMaximized={true}
+                />
+              );
+            })()}
           </div>
         ) : (
           <div
-            className={`grid gap-2 ${getGridColumns()} min-h-full content-start`}
+            className={`grid gap-2 ${getGridColumns()} min-h-full`}
             style={{ gridAutoRows: "minmax(240px, 1fr)" }}
           >
             {workerBees.map((bee) => (
               <div
                 key={bee.id}
-                className="flex flex-col relative overflow-hidden rounded-xl glass shadow-glass transition-all duration-300 hover:shadow-glass-lg"
+                className="flex flex-col relative overflow-hidden rounded-xl glass shadow-glass transition-all duration-300 hover:shadow-glass-lg h-full"
                 style={{ minHeight: "240px" }}
               >
-                <TerminalPane
+                <WorkerBeePane
                   paneId={bee.id}
                   workingDir={workingDir}
                   workerBee={bee}

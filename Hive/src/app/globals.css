@@ -135,7 +135,7 @@ body {
 
 /* Let the terminal breathe inside its glass pane */
 .xterm {
-  padding: 6px 8px;
+  padding: 0;
 }
 
 /* Smooth animations */
