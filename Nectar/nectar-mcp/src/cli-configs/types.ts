@@ -39,7 +39,37 @@ export interface NoopConfigAction {
   reason: string;
 }
 
-export type CliConfigAction = FileConfigAction | CommandConfigAction | NoopConfigAction;
+/** A single file the host should write as part of a plugin directory. */
+export interface PluginFile {
+  /** Path relative to the plugin directory root (e.g. "plugin.json"). */
+  relativePath: string;
+  /** Exact file contents to write (already serialized). */
+  content: string;
+}
+
+/**
+ * Write a whole plugin directory, then optionally run a registration command.
+ *
+ * Used by Antigravity (`agy`): its plugins are directories containing a
+ * `plugin.json` manifest plus a `mcp_config.json` declaring the MCP server.
+ * The confirmed activation path is `agy plugin install <dir>` (NOT
+ * auto-discovery), so `installCommand` carries that one-off command.
+ */
+export interface PluginDirConfigAction {
+  kind: 'writePluginDir';
+  /** Absolute path of the plugin directory to create (contains the files). */
+  pluginDir: string;
+  /** Files to write under `pluginDir`. */
+  files: PluginFile[];
+  /** Optional command to register/activate the plugin after files are written. */
+  installCommand?: { command: string; args: string[] };
+}
+
+export type CliConfigAction =
+  | FileConfigAction
+  | CommandConfigAction
+  | NoopConfigAction
+  | PluginDirConfigAction;
 
 /** The `node <mcpServerPath> --project <projectPath>` invocation, as argv. */
 export function nectarCommand(spec: McpServerSpec): string[] {

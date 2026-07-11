@@ -253,20 +253,38 @@ function flattenForStdin(text: string): string {
   return text.replace(/\r?\n+/g, " ").replace(/\s{2,}/g, " ").trim();
 }
 
+// ── Antigravity plugin path opt-in ──────────────────────────────────────────
+// FLIP THIS to true to make Antigravity (`agy`) use the Nectar MCP *plugin*
+// path (agy plugin install + mcp_config.json) instead of the stdin fallback.
+//
+// Default is false: the plugin path loads and lists nectar_query in live
+// sessions (proven), but a model-initiated tools/call has NOT been confirmed
+// end-to-end yet, so stdin injection stays the active default until you verify
+// it yourself in a real WorkerBee pane. See the flip-on steps in the PR notes.
+const ENABLE_ANTIGRAVITY_PLUGIN = false;
+
+// Which memory bridge actually ran for a given WorkerBee launch. Surfaced both
+// to the console and as a visible line in the pane so it's obvious which path
+// is live without reading code.
+type NectarBridge = "mcp" | "mcp-plugin" | "stdin-fallback";
+
 // Write MCP server config so the CLI registers nectar_query as a tool.
 //
-// The per-CLI knowledge (which file / which command, and the fragile Cline
-// `cmd /c` workaround) lives in the standalone @hiveory/nectar-mcp package as
-// PURE builders. This function only resolves paths and performs the actual I/O
-// via Tauri `invoke()`. Adding a CLI is a change in that package, not here.
-async function ensureMCPConfigForCLI(cli: string, projectPath: string): Promise<void> {
+// The per-CLI knowledge (which file / which command, the fragile Cline
+// `cmd /c` workaround, and the Antigravity plugin dir) lives in the standalone
+// @hiveory/nectar-mcp package as PURE builders. This function only resolves
+// paths and performs the actual I/O via Tauri `invoke()`. It returns which
+// bridge was configured so the caller can show a visible marker.
+async function ensureMCPConfigForCLI(cli: string, projectPath: string): Promise<NectarBridge> {
   const mcpServerPath = await invoke<string>("get_nectar_mcp_path");
-  const action = buildCliConfig(cli, { mcpServerPath, projectPath });
+  const action = buildCliConfig(cli, { mcpServerPath, projectPath }, {
+    enableAntigravityPlugin: ENABLE_ANTIGRAVITY_PLUGIN,
+  });
 
   switch (action.kind) {
     case "noop":
       console.log(`[Nectar] ${action.reason}`);
-      return;
+      return "stdin-fallback";
 
     case "writeFile": {
       // Ensure parent dir exists, merge with any existing config, then write.
@@ -276,13 +294,36 @@ async function ensureMCPConfigForCLI(cli: string, projectPath: string): Promise<
       try { existing = await invoke<string>("read_file", { path: action.path }); } catch { existing = null; }
       await invoke("write_file", { path: action.path, content: action.merge(existing) });
       console.log(`[Nectar] Wrote MCP config for ${cli} -> ${action.path}`);
-      return;
+      return "mcp";
     }
 
     case "runCommand":
       await invoke("run_command", { command: action.command, args: action.args });
       console.log(`[Nectar] Registered MCP for ${cli} via: ${action.command} ${action.args.join(" ")}`);
-      return;
+      return "mcp";
+
+    case "writePluginDir": {
+      // Antigravity plugin path: write plugin.json + mcp_config.json, then run
+      // the install command (agy plugin install <dir>).
+      await invoke("ensure_dir", { path: action.pluginDir });
+      for (const file of action.files) {
+        await invoke("write_file", {
+          path: `${action.pluginDir}/${file.relativePath}`,
+          content: file.content,
+        });
+      }
+      console.log(`[Nectar] Wrote Antigravity plugin dir -> ${action.pluginDir}`);
+      if (action.installCommand) {
+        await invoke("run_command", {
+          command: action.installCommand.command,
+          args: action.installCommand.args,
+        });
+        console.log(
+          `[Nectar] Installed Antigravity plugin via: ${action.installCommand.command} ${action.installCommand.args.join(" ")}`,
+        );
+      }
+      return "mcp-plugin";
+    }
   }
 }
 
@@ -513,11 +554,16 @@ export default function WorkerBeePane({
 
       // For MCP-capable CLIs, write their config before spawning so the
       // Nectar MCP server (with nectar_query tool) is registered at boot.
+      // `nectarBridge` records which memory path actually engaged so we can
+      // (a) show a visible marker in the pane and (b) skip the redundant stdin
+      // push when a real MCP/plugin path is active.
+      let nectarBridge: NectarBridge = "stdin-fallback";
       if (spawnDir) {
         try {
-          await ensureMCPConfigForCLI(workerBee.cli, spawnDir);
+          nectarBridge = await ensureMCPConfigForCLI(workerBee.cli, spawnDir);
         } catch (e) {
           console.warn(`[Nectar] MCP config failed for ${workerBee.cli}, using stdin fallback:`, e);
+          nectarBridge = "stdin-fallback";
         }
       }
 
@@ -628,6 +674,21 @@ export default function WorkerBeePane({
         };
         readOutput();
 
+        // Visible marker: show which Nectar memory bridge is live for this
+        // pane, so testing doesn't require reading code or the devtools console.
+        if (!disposed && terminal) {
+          const bridgeLabel =
+            nectarBridge === "mcp-plugin"
+              ? "MCP PLUGIN (agy nectar_query, opt-in)"
+              : nectarBridge === "mcp"
+                ? "MCP (nectar_query tool)"
+                : "stdin fallback (boot-time injection)";
+          terminal.writeln(
+            `\x1b[38;5;108m[nectar] memory bridge: ${bridgeLabel}\x1b[0m`,
+          );
+          console.log(`[Nectar] bridge for ${workerBee.cli} (${paneId}): ${nectarBridge}`);
+        }
+
         // Memory injection: feed the agent the actual handoff text from the
         // previous session (not just a pointer).  We keep it short and flat
         // (≈1200 chars, no embedded newlines) so the CLI's readline treats it
@@ -635,7 +696,12 @@ export default function WorkerBeePane({
         // through raw stdin caused every embedded \n to be read as "Enter",
         // fragmenting the message.  The flat text is submitted with \n (which
         // CLIs universally treat as line-end) after a generous boot delay.
-        if (spawnDir) {
+        //
+        // Skip the stdin push ONLY when the Antigravity plugin path is active —
+        // there the agent pulls memory on demand via nectar_query, so a boot
+        // injection would be redundant. All other CLIs keep their existing
+        // behaviour unchanged.
+        if (spawnDir && nectarBridge !== "mcp-plugin") {
           (async () => {
             try {
               const nectar = await Nectar.create(spawnDir!);

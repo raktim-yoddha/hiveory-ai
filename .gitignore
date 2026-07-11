@@ -40,4 +40,5 @@ coverage
 target
 Cargo.lock
 AGENTS.md
+TESTCASE.md
 MIGRATION_REPORT.md
