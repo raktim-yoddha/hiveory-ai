@@ -4,12 +4,16 @@ import { useEffect, useState } from "react";
 import WorkerBeePane from "./WorkerBeePane";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkerBeesStore } from "@/stores/workerBeesStore";
+import { LayoutList, Columns3, Bot } from "lucide-react";
 
 interface WorkerBeesPanelProps {
   workingDir?: string | null;
+  onToggleWorkspaces?: () => void;
+  onToggleBoard?: () => void;
+  onToggleAgentDock?: () => void;
 }
 
-export default function WorkerBeesPanel({ workingDir }: WorkerBeesPanelProps) {
+export default function WorkerBeesPanel({ workingDir, onToggleWorkspaces, onToggleBoard, onToggleAgentDock }: WorkerBeesPanelProps) {
   const workerBees = useWorkerBeesStore((state) => state.workerBees);
   const removeWorkerBee = useWorkerBeesStore((state) => state.removeWorkerBee);
   const updateWorkerBee = useWorkerBeesStore((state) => state.updateWorkerBee);
@@ -99,6 +103,30 @@ export default function WorkerBeesPanel({ workingDir }: WorkerBeesPanelProps) {
 
   return (
     <div className="flex-1 flex flex-col bg-bee-canvas/40 relative">
+      {/* ADE toolbar — Workspaces / Board toggles */}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-bee-border/50 flex-shrink-0">
+        <button
+          onClick={onToggleWorkspaces}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-bee-textDim hover:text-bee-text hover:bg-bee-border/40 transition-colors"
+        >
+          <LayoutList size={12} />
+          Workspaces
+        </button>
+        <button
+          onClick={onToggleBoard}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-bee-textDim hover:text-bee-text hover:bg-bee-border/40 transition-colors"
+        >
+          <Columns3 size={12} />
+          Board
+        </button>
+        <button
+          onClick={onToggleAgentDock}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-bee-textDim hover:text-bee-text hover:bg-bee-border/40 transition-colors"
+        >
+          <Bot size={12} />
+          QueenBee
+        </button>
+      </div>
       <div className="flex-1 min-h-0 p-2 overflow-y-auto">
         {workerBees.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-center animate-fade-in">

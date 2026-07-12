@@ -5,13 +5,13 @@ import Sidebar from "@/components/Sidebar";
 import EditorPanel from "@/components/editor/EditorPanel";
 import WorkerBeesPanel from "@/components/workerbees/WorkerBeesPanel";
 import CLIPicker, { CLIType, CLI_COMMANDS } from "@/components/workerbees/CLIPicker";
-import SettingsModal from "@/components/SettingsModal";
+import SettingsPage from "@/components/settings/SettingsPage";
 import { useWorkerBeesStore, WorkerBee, GridLayout } from "@/stores/workerBeesStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { getTauriAPIs, loadTauriAPIs } from "@/lib/tauri";
-import WorkspaceTabStrip from "@/components/workspace/WorkspaceTabStrip";
-import BoardView from "@/components/board/BoardView";
-import QueenBeeMissionInput from "@/components/queenbee/QueenBeeMissionInput";
+import WorkspacesPanel from "@/components/workspace/WorkspacesPanel";
+import BoardPopup from "@/components/board/BoardPopup";
+import AgentDock from "@/components/queenbee/AgentDock";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import {
   File,
@@ -27,8 +27,7 @@ import {
   LayoutGrid,
   Check,
   FolderOpen,
-  LayoutDashboard,
-  ClipboardList,
+  Bot,
 } from "lucide-react";
 
 const LAYOUT_OPTIONS: { value: GridLayout; label: string }[] = [
@@ -66,11 +65,11 @@ export default function HomePage() {
   const gridLayout = useWorkerBeesStore((state) => state.gridLayout);
   const setGridLayout = useWorkerBeesStore((state) => state.setGridLayout);
   const refitTerminals = useWorkerBeesStore((state) => state.refitTerminals);
-  const workspaces = useWorkspaceStore((s) => s.workspaces);
-  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const mode = useWorkspaceStore((s) => s.mode);
   const setMode = useWorkspaceStore((s) => s.setMode);
-  const addWorkspace = useWorkspaceStore((s) => s.addWorkspace);
+  const [showWorkspaces, setShowWorkspaces] = useState(false);
+  const [showBoard, setShowBoard] = useState(false);
+  const [showAgentDock, setShowAgentDock] = useState(true);
 
   // Whenever the user switches tabs, wait one frame for the hidden panel to
   // become visible then tell all xterm instances to re-fit to the new size.
@@ -110,7 +109,7 @@ export default function HomePage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "`") {
         e.preventDefault();
-        const modes: Array<'editor' | 'ade' | 'board'> = ['editor', 'ade', 'board'];
+        const modes: Array<'editor' | 'ade'> = ['editor', 'ade'];
         const idx = modes.indexOf(mode);
         setMode(modes[(idx + 1) % modes.length]);
       }
@@ -521,7 +520,7 @@ export default function HomePage() {
             Hiveory<span className="text-bee-gold">AI</span>
           </span>
 
-          {/* Editor/ADE/Board Toggle — segmented glass control */}
+          {/* Editor/ADE Toggle — segmented glass control */}
           <div className="flex items-center p-0.5 ml-4 rounded-lg glass border-bee-border/70">
             <button
               onClick={() => setMode("editor")}
@@ -545,21 +544,7 @@ export default function HomePage() {
               <Terminal size={12} />
               ADE
             </button>
-            <button
-              onClick={() => setMode("board")}
-              className={`px-3 py-1 text-xs rounded-md flex items-center transition-all ${
-                mode === "board"
-                  ? "bg-bee-gold/15 text-bee-goldHi shadow-glow"
-                  : "text-bee-textDim hover:text-bee-text"
-              }`}
-            >
-              <LayoutDashboard size={12} />
-              Board
-            </button>
           </div>
-
-          {/* Workspace tab strip — always visible */}
-          <WorkspaceTabStrip />
 
           {mode === "editor" ? (
             /* Menu Items */
@@ -826,12 +811,29 @@ export default function HomePage() {
         <div className={`flex-1 flex overflow-hidden min-w-0 ${mode !== "editor" ? "hidden" : ""}`}>
           <EditorPanel openFile={openFile} projectPath={projectPath} />
         </div>
-        <div className={`flex-1 flex flex-col overflow-hidden min-w-0 ${mode !== "ade" ? "hidden" : ""}`}>
-          <QueenBeeMissionInput projectPath={projectPath || ''} />
-          <WorkerBeesPanel workingDir={projectPath} />
-        </div>
-        <div className={`flex-1 flex overflow-hidden min-w-0 ${mode !== "board" ? "hidden" : ""}`}>
-          <BoardView />
+        <div className={`flex-1 flex overflow-hidden min-w-0 relative ${mode !== "ade" ? "hidden" : ""}`}>
+          {/* Workspaces side panel — absolutely positioned overlay, does not affect grid width */}
+          {showWorkspaces && (
+            <div className="absolute left-0 top-0 bottom-0 z-40">
+              <WorkspacesPanel onClose={() => setShowWorkspaces(false)} />
+            </div>
+          )}
+
+          {/* Main grid area — always full width */}
+          <div className="flex-1 flex flex-col overflow-hidden relative">
+            <WorkerBeesPanel
+              workingDir={projectPath}
+              onToggleWorkspaces={() => setShowWorkspaces(!showWorkspaces)}
+              onToggleBoard={() => setShowBoard(!showBoard)}
+              onToggleAgentDock={() => setShowAgentDock(!showAgentDock)}
+            />
+          </div>
+
+          {/* Board popup (floating over grid, top-right) */}
+          <BoardPopup isOpen={showBoard} onClose={() => setShowBoard(false)} />
+
+          {/* Agent Dock (right side panel, conditionally rendered) */}
+          {showAgentDock && <AgentDock />}
         </div>
       </div>
 
@@ -857,7 +859,7 @@ export default function HomePage() {
       </div>
 
       {showSettings && (
-        <SettingsModal onClose={() => setShowSettings(false)} />
+        <SettingsPage onClose={() => setShowSettings(false)} />
       )}
     </div>
   );

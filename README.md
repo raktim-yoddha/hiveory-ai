@@ -30,22 +30,23 @@ Hiveory AI is a local-first, AI-native desktop dev environment. You open a proje
 
 **1. Open a project** — Launch Hiveory AI and open any project folder. On open, a `.nectar/` memory store is created (or reused) inside that project.
 
-**2. Pick a mode** — Three modes via the title bar toggle (or Ctrl+`` ` ``):
+**2. Pick a mode** — Two modes via the title bar toggle (or Ctrl+`` ` ``):
 - **Editor** — file tree + Monaco editor (open/edit/save) with basic git status/diff and an inline terminal.
-- **ADE** — WorkerBee pane grid for running CLI agents, plus a QueenBee mission input bar at the top.
-- **Board** — kanban view (Backlog → Todo → In Progress → Review → Done) for tracking multi-agent missions.
+- **ADE** — WorkerBee pane grid for running CLI agents, with a QueenBee conversational dock on the right, workspaces panel on the left, and a kanban board popup.
 
-**3. Launch a WorkerBee** — In ADE mode, open a terminal pane and pick a CLI agent (OpenCode, Claude Code, Codex, Cline, Kilo, Antigravity, or others). It runs as a normal child process you can type into — Hiveory wires project memory in automatically. A `[nectar] memory bridge: ...` line shows which path is active.
+**3. Configure providers** — Open Settings (gear icon in title bar) and navigate to the **Providers** section. Connect API providers (Anthropic, OpenAI, Google, DeepSeek, OpenRouter, or custom OpenAI-compatible endpoints). Each provider is verified by calling its models endpoint — invalid keys, unreachable URLs, and model-not-found errors are distinguished. Connected providers populate the **Models** section for app-wide selection.
 
-**4. Let memory flow** — For MCP-capable agents, a `nectar_query` tool is registered so the agent pulls ranked memory on demand. For others, a compact handoff summary is injected at boot. A visible role badge and branch indicator appears on panes that belong to an active mission.
+**4. Launch a WorkerBee** — In ADE mode, open a terminal pane and pick a CLI agent (OpenCode, Claude Code, Codex, Cline, Kilo, Antigravity, or others). It runs as a normal child process you can type into — Hiveory wires project memory in automatically. A `[nectar] memory bridge: ...` line shows which path is active.
 
-**5. Coordinate multiple agents (v2)** — In Board mode, hand a goal to QueenBee via the docked mission input. QueenBee reads Nectar for context, breaks the goal into tasks with declared file ownership, and surfaces them as editable draft cards. Review the plan, then dispatch — HiveMind creates isolated git worktrees and launches WorkerBees for each task. As Builders finish, cards move to Review where a Reviewer diffs and approves. Every agent reads/writes the same Nectar memory.
+**5. Let memory flow** — For MCP-capable agents, a `nectar_query` tool is registered so the agent pulls ranked memory on demand. For others, a compact handoff summary is injected at boot. A visible role badge and branch indicator appears on panes that belong to an active mission.
 
-**6. Workspace tabs** — Create multiple workspace tabs (color-coded), each with its own project folder, pane layout, and running agents. Agents in non-active tabs keep running in the background.
+**6. Coordinate multiple agents (v2)** — Talk to QueenBee in the right-side conversational dock. QueenBee reads Nectar for context, breaks goals into tasks with declared file ownership, and dispatches them autonomously — HiveMind creates isolated git worktrees and launches WorkerBees for each task. Track progress via the Board popup (button in the ADE toolbar). As Builders finish, cards move to Review where a Reviewer diffs and approves. Every agent reads/writes the same Nectar memory.
 
-**7. Swap agents freely** — Close one agent, open another. It picks up decisions, conventions, and handoffs recorded by the previous agent from the same `.nectar/` — no re-explaining.
+**7. Workspaces** — Click the Workspaces button in the ADE toolbar to open the side panel. Create multiple workspaces (each with its own project folder, pane layout, and running agents). Agents in non-active workspaces keep running in the background.
 
-**8. Inspect & rebuild** — `.nectar/memory/*.md` is readable markdown. Delete `nectar.db` / `.nectar/index/` and re-index — retrieval rebuilds fully from the markdown alone.
+**8. Swap agents freely** — Close one agent, open another. It picks up decisions, conventions, and handoffs recorded by the previous agent from the same `.nectar/` — no re-explaining.
+
+**9. Inspect & rebuild** — `.nectar/memory/*.md` is readable markdown. Delete `nectar.db` / `.nectar/index/` and re-index — retrieval rebuilds fully from the markdown alone.
 
 ## ⚙️ Implementation Process
 
@@ -260,13 +261,14 @@ hiveory/
 │   ├── src/                      # Next.js frontend
 │   │   ├── app/                  # App Router pages
 │   │   ├── components/
-│   │   │   ├── board/            # Kanban board view (v2)
+│   │   │   ├── board/            # Kanban board popup (v2)
 │   │   │   ├── editor/           # Monaco editor + file explorer
-│   │   │   ├── queenbee/         # QueenBee mission input bar (v2)
+│   │   │   ├── queenbee/         # QueenBee AgentDock conversational panel
+│   │   │   ├── settings/         # Settings page: ProvidersSection + ModelsSection
 │   │   │   ├── terminal/         # xterm panes + layout
-│   │   │   ├── workerbees/       # CLI agent panes + picker + RoleBadge (v2)
-│   │   │   └── workspace/        # Workspace tab strip (v2)
-│   │   ├── stores/               # Zustand stores (settings, workerbees, workspaces v2)
+│   │   │   ├── workerbees/       # CLI agent panes + picker + RoleBadge
+│   │   │   └── workspace/        # Workspaces side panel
+│   │   ├── stores/               # Zustand stores (settings, workerbees, workspaces, providers)
 │   │   └── lib/                  # Nectar client + Tauri helpers
 │   └── src-tauri/                # Rust: PTY, filesystem, Nectar IPC, git
 │       ├── src/lib.rs

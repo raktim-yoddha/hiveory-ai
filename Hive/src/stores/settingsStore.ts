@@ -20,6 +20,10 @@ interface SettingsState {
   setDefaultWorkerBee: (cli: string) => void;
   nectarTokenBudget: number;
   setNectarTokenBudget: (budget: number) => void;
+  queenbeeProvider: string;
+  setQueenbeeProvider: (provider: string) => void;
+  queenbeeModel: string;
+  setQueenbeeModel: (model: string) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -38,6 +42,10 @@ export const useSettingsStore = create<SettingsState>()(
       setDefaultWorkerBee: (cli) => set({ defaultWorkerBee: cli }),
       nectarTokenBudget: 4000,
       setNectarTokenBudget: (budget) => set({ nectarTokenBudget: budget }),
+      queenbeeProvider: "openrouter",
+      setQueenbeeProvider: (provider) => set({ queenbeeProvider: provider }),
+      queenbeeModel: "openai/gpt-4o-mini",
+      setQueenbeeModel: (model) => set({ queenbeeModel: model }),
     }),
     { name: "hiveory-settings" },
   ),

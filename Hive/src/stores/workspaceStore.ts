@@ -10,7 +10,7 @@ export interface Workspace {
   activeMissionId?: string;
 }
 
-export type AppMode = 'editor' | 'ade' | 'board';
+export type AppMode = 'editor' | 'ade';
 
 interface WorkspaceState {
   workspaces: Workspace[];
