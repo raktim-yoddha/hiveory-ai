@@ -6,29 +6,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { useWorkerBeesStore } from "@/stores/workerBeesStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { useWorkspaceBoardPanel, WorkspaceKanbanDrawer } from "@hiveory/taskcomb";
-import { LayoutList, Columns3, Bot, Hexagon, LayoutGrid, ScrollText } from "lucide-react";
+import { Bot, Hexagon } from "lucide-react";
 
 interface WorkerBeesPanelProps {
   workingDir?: string | null;
-  onToggleWorkspaces?: () => void;
-  onToggleBoard?: () => void;
-  onToggleAgentDock?: () => void;
-  onToggleSessionHistory?: () => void;
-  workspacesDocked?: boolean;
-  queenbeeDocked?: boolean;
-  sessionHistoryOpen?: boolean;
 }
 
 
-export default function WorkerBeesPanel({ workingDir, onToggleWorkspaces, onToggleAgentDock, onToggleSessionHistory, workspacesDocked, queenbeeDocked, sessionHistoryOpen }: WorkerBeesPanelProps) {
+export default function WorkerBeesPanel({ workingDir }: WorkerBeesPanelProps) {
   const workerBees = useWorkerBeesStore((state) => state.workerBees);
   const replaceAll = useWorkerBeesStore((state) => state.replaceAll);
   const removeWorkerBee = useWorkerBeesStore((state) => state.removeWorkerBee);
   const updateWorkerBee = useWorkerBeesStore((state) => state.updateWorkerBee);
   const maximizedPane = useWorkerBeesStore((state) => state.maximizedPane);
   const setMaximizedPane = useWorkerBeesStore((state) => state.setMaximizedPane);
-  const gridLayout = useWorkerBeesStore((state) => state.gridLayout);
-  const setGridLayout = useWorkerBeesStore((state) => state.setGridLayout);
   const reorderWorkerBees = useWorkerBeesStore((state) => state.reorderWorkerBees);
   const refitTerminals = useWorkerBeesStore((state) => state.refitTerminals);
 
@@ -49,7 +40,6 @@ export default function WorkerBeesPanel({ workingDir, onToggleWorkspaces, onTogg
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // Sync active workspace's paneLayout → workerBeesStore
-  // When the active workspace changes, load its WorkerBees into the store
   useEffect(() => {
     if (activeWorkspace) {
       replaceAll(activeWorkspace.paneLayout);
@@ -95,104 +85,17 @@ export default function WorkerBeesPanel({ workingDir, onToggleWorkspaces, onTogg
     setEditValue("");
   };
 
-  const FIXED_COLUMN_CLASSES: Record<1 | 2 | 3 | 4, string> = {
-    1: "grid-cols-1",
-    2: "grid-cols-2",
-    3: "grid-cols-3",
-    4: "grid-cols-4",
-  };
-
-  const dockedCount = (workspacesDocked ? 1 : 0) + (queenbeeDocked ? 1 : 0);
-
   const getGridColsCount = () => {
     const count = workerBees.length;
-    const maxCols = dockedCount === 0 ? 4 : dockedCount === 1 ? 3 : 2;
-    if (gridLayout !== "auto") {
-      return Math.min(gridLayout as number, maxCols, Math.max(1, count));
-    }
     if (count <= 1) return 1;
-    if (count <= maxCols) return Math.min(count, maxCols);
-    if (count <= maxCols * 2) return maxCols;
-    if (count <= maxCols * 3) return maxCols;
-    return maxCols;
+    if (count <= 2) return 2;
+    if (count <= 4) return 2;
+    return 3;
   };
-
-  const LAYOUT_OPTIONS = [
-    { value: "auto" as const, label: "Auto" },
-    { value: 1 as const, label: "1" },
-    { value: 2 as const, label: "2" },
-    { value: 3 as const, label: "3" },
-    { value: 4 as const, label: "4" },
-  ];
 
   return (
     <div className="flex-1 flex flex-col bg-bee-canvas/40 relative">
-      {/* ADE toolbar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-bee-border/50 flex-shrink-0">
-        <button
-          onClick={onToggleWorkspaces}
-          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-bee-textDim hover:text-bee-text hover:bg-bee-border/40 transition-colors"
-        >
-          <LayoutList size={12} />
-          Workspaces
-        </button>
-        <button
-          onClick={toggleBoard}
-          data-workspace-board-trigger
-          data-workspace-board-preview={isDragPreview ? "true" : undefined}
-          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] transition-colors ${
-            isOpenOrPreview
-              ? "bg-bee-gold/15 text-bee-goldHi"
-              : "text-bee-textDim hover:text-bee-text hover:bg-bee-border/40"
-          }`}
-        >
-          <Columns3 size={12} />
-          Board
-        </button>
-        <button
-          onClick={onToggleAgentDock}
-          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-bee-textDim hover:text-bee-text hover:bg-bee-border/40 transition-colors"
-        >
-          <Bot size={12} />
-          QueenBee
-        </button>
-        <button
-          onClick={onToggleSessionHistory}
-          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] transition-colors ${
-            sessionHistoryOpen
-              ? "bg-bee-gold/15 text-bee-goldHi"
-              : "text-bee-textDim hover:text-bee-text hover:bg-bee-border/40"
-          }`}
-        >
-          <ScrollText size={12} />
-          Sessions
-        </button>
-
-        <div className="ml-auto flex items-center gap-1">
-          {/* Workspace name label */}
-          {activeWorkspace && (
-            <span className="text-[10px] text-bee-textMuted mr-2 truncate max-w-[100px]">
-              {activeWorkspace.name}
-            </span>
-          )}
-          <div className="flex items-center p-0.5 rounded-lg glass border-bee-border/70">
-            {LAYOUT_OPTIONS.map((opt) => (
-              <button
-                key={opt.label}
-                onClick={() => setGridLayout(opt.value)}
-                title={opt.value === "auto" ? "Auto layout" : `${opt.value} column${opt.value === 1 ? "" : "s"}`}
-                className={`px-2 py-1 text-[11px] rounded-md flex items-center gap-1 transition-all ${
-                  gridLayout === opt.value
-                    ? "bg-bee-gold/15 text-bee-goldHi"
-                    : "text-bee-textDim hover:text-bee-text"
-                }`}
-              >
-                {opt.value === "auto" ? <LayoutGrid size={11} /> : opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* No toolbar — all controls are in the main title bar */}
 
       <div className="flex-1 min-h-0 p-2 overflow-y-auto">
         {workerBees.length === 0 ? (
@@ -203,7 +106,7 @@ export default function WorkerBeesPanel({ workingDir, onToggleWorkspaces, onTogg
             <div className="space-y-1">
               <div className="text-sm font-medium text-bee-textDim">No WorkerBees running</div>
               <div className="text-xs text-bee-textMuted">
-                Click <span className="text-bee-gold font-medium">Add</span> to launch a CLI agent
+                Click <span className="text-bee-gold font-medium">Add</span> in the title bar to launch a CLI agent
               </div>
             </div>
           </div>
@@ -265,7 +168,7 @@ export default function WorkerBeesPanel({ workingDir, onToggleWorkspaces, onTogg
         )}
       </div>
 
-      {/* Kanban board drawer */}
+      {/* Kanban board drawer (triggered by board icon in title bar) */}
       {isOpenOrPreview && activeWorkspace && (
         <WorkspaceKanbanDrawer
           open={!isDragPreview}

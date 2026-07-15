@@ -15,30 +15,36 @@ export interface Workspace {
   taskCards: TaskCard[];
   nextSortOrder: number;
   activeMissionId?: string;
+  isDeleting?: boolean;
+  deletePhase?: 'queued' | 'deleting';
 }
 
-export type AppMode = 'editor' | 'ade';
+export type DeleteState = { isDeleting: boolean; phase: 'queued' | 'deleting' };
 
 interface WorkspaceState {
   workspaces: Workspace[];
   activeWorkspaceId: string;
-  mode: AppMode;
   boardOpen: boolean;
+  renamingWorkspaceId: string | null;
 
   addWorkspace: (workspace: Workspace) => void;
   removeWorkspace: (id: string) => void;
   setActiveWorkspace: (id: string) => void;
-  setMode: (mode: AppMode) => void;
   updateWorkspace: (id: string, updates: Partial<Workspace>) => void;
   renameWorkspace: (id: string, name: string) => void;
   setWorkspaceColor: (id: string, color: string) => void;
   getActiveWorkspace: () => Workspace | undefined;
   setBoardOpen: (open: boolean) => void;
+  setRenamingWorkspaceId: (id: string | null) => void;
 
   addTask: (workspaceId: string, title: string, description?: string) => void;
   setTasks: (workspaceId: string, tasks: TaskCard[]) => void;
   moveTask: (workspaceId: string, taskId: string, targetColumn: import('@hiveory/taskcomb').ColumnId, targetIndex?: number) => void;
   activateWorkspaceAndSync: (id: string) => void;
+
+  deleteWorkspace: (id: string) => void;
+  commitDeleteWorkspace: (id: string) => void;
+  cancelDeleteWorkspace: (id: string) => void;
 }
 
 const WORKSPACE_COLORS = ['#c9a227', '#22c55e', '#3b82f6', '#a855f7', '#ef4444', '#06b6d4'];
@@ -61,8 +67,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     nextSortOrder: 3,
   }],
   activeWorkspaceId: '',
-  mode: 'editor',
   boardOpen: false,
+  renamingWorkspaceId: null,
 
   addWorkspace: (workspace) =>
     set((state) => ({ workspaces: [...state.workspaces, workspace], activeWorkspaceId: workspace.id })),
@@ -75,8 +81,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }),
 
   setActiveWorkspace: (id) => set({ activeWorkspaceId: id }),
-  setMode: (mode) => set({ mode }),
   setBoardOpen: (open) => set({ boardOpen: open }),
+  setRenamingWorkspaceId: (id) => set({ renamingWorkspaceId: id }),
 
   updateWorkspace: (id, updates) =>
     set((state) => ({ workspaces: state.workspaces.map((w) => (w.id === id ? { ...w, ...updates } : w)) })),
@@ -121,4 +127,28 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     })),
 
   activateWorkspaceAndSync: (id) => { set({ activeWorkspaceId: id }); },
+
+  deleteWorkspace: (id) =>
+    set((state) => ({
+      workspaces: state.workspaces.map((w) =>
+        w.id === id ? { ...w, isDeleting: true, deletePhase: 'queued' as const } : w
+      ),
+    })),
+
+  commitDeleteWorkspace: (id) =>
+    set((state) => {
+      const remaining = state.workspaces.filter((w) => w.id !== id);
+      if (remaining.length === 0) return state;
+      return {
+        workspaces: remaining,
+        activeWorkspaceId: state.activeWorkspaceId === id ? remaining[0].id : state.activeWorkspaceId,
+      };
+    }),
+
+  cancelDeleteWorkspace: (id) =>
+    set((state) => ({
+      workspaces: state.workspaces.map((w) =>
+        w.id === id ? { ...w, isDeleting: false, deletePhase: undefined } : w
+      ),
+    })),
 }));

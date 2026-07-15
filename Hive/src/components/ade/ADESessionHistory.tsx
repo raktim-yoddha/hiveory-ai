@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { Nectar, type NectarSessionEntry } from "@/lib/nectar";
 
-type ScopeTab = "worktree" | "workspace" | "all";
+type ScopeTab = "workspace" | "all";
 
 interface Props {
   projectPath: string | null;
@@ -91,7 +91,10 @@ export default function ADESessionHistory({
       try {
         const nectar = new Nectar(projectPath);
         nectarRef.current = nectar;
-        const result = await nectar.listSessions(scope, searchQuery || undefined, activeWorktreeId, activeWorkspaceId);
+        // 'workspace' scope = current workspace (which is 1:1 with worktree per §0),
+        // map to 'worktree' scope on the backend with activeWorkspaceId as the worktree_id.
+        const backendScope = scope === 'workspace' ? 'worktree' : 'all';
+        const result = await nectar.listSessions(backendScope, searchQuery || undefined, backendScope === 'worktree' ? activeWorkspaceId : undefined, activeWorkspaceId);
         if (fetchId !== fetchIdRef.current) return;
         setSessions(result.sessions);
       } catch (e) {
@@ -132,7 +135,6 @@ export default function ADESessionHistory({
   };
 
   const scopeOptions: { value: ScopeTab; label: string }[] = [
-    { value: "worktree", label: "This worktree" },
     { value: "workspace", label: "This workspace" },
     { value: "all", label: "All" },
   ];
