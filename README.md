@@ -6,10 +6,10 @@ Hiveory AI is a local-first, AI-native desktop dev environment. You open a proje
 
 - **Unified memory (Nectar)** — hybrid vector + keyword search over project knowledge, shared across all agents
 - **WorkerBees** — launch CLI coding agents in real terminal panes, wired to memory via MCP or stdin injection
-- **Hive shell** — Tauri desktop app with terminal panes, Monaco editor, file explorer, and basic git status/diff
-- **Agent orchestration (HiveMind)** — registry, lock management, git worktree isolation, structured handoffs, and a plan/dispatch/approve/review engine
-- **Planning (QueenBee)** — breaks a human goal into tasks with declared file ownership and dependencies
-- **Kanban board (TaskComb)** — Backlog → Todo → In Progress → Review → Done, drag-to-dispatch triggers HiveMind
+- **Hive shell** — Tauri desktop app: WorkerBee terminal-pane grid, workspace sidebar, QueenBee dock, kanban board, and basic git status
+- **Planning (QueenBee)** — conversational Steward/Forager/Stinger modes that break a goal into tasks with declared file ownership, plus tool-calling to act on the app (create workspaces, add/move tasks, launch WorkerBees, dispatch)
+- **Agent orchestration (HiveMind)** — standalone Node package: registry, lock management, git worktree isolation, structured handoffs, and a plan/dispatch/approve/review engine (see status note on how it connects to the shell)
+- **Kanban board (TaskComb)** — Backlog → Todo → In Progress → Review → Done, custom pointer-based drag & drop
 - **Workspaces** — multiple saved project contexts as tabs, each with its own pane layout and running agents
 - **Model-agnostic** — swap Claude Code → Codex → Aider without losing context
 - **Human-readable memory** — `.nectar/memory/*.md` is plain, git-diffable markdown
@@ -38,9 +38,7 @@ Hiveory AI is a local-first, AI-native desktop dev environment. You open a proje
 
 **1. Open a project** — Launch Hiveory AI and open any project folder. On open, a `.nectar/` memory store is created (or reused) inside that project.
 
-**2. Pick a mode** — Two modes via the title bar toggle (or Ctrl+`` ` ``):
-- **Editor** — file tree + Monaco editor (open/edit/save) with basic git status/diff and an inline terminal.
-- **ADE** — WorkerBee pane grid for running CLI agents, with a QueenBee conversational dock on the right, workspaces panel on the left, and a kanban board popup.
+**2. The ADE workspace** — Hiveory opens into the ADE (Agent Development Environment): a WorkerBee pane grid for running CLI agents, a workspaces sidebar on the left, a QueenBee conversational dock on the right, and a kanban board drawer. Toggle each via the title bar. (The `git_status` command backs a basic branch/changed-count indicator; a full Monaco editor mode is not currently wired.)
 
 **3. Configure providers** — Open Settings (gear icon in title bar) and navigate to the **Providers** section. Connect API providers (Anthropic, OpenAI, Google, DeepSeek, OpenRouter, or custom OpenAI-compatible endpoints). Each provider is verified by calling its models endpoint — invalid keys, unreachable URLs, and model-not-found errors are distinguished. Connected providers populate the **Models** section for app-wide selection.
 
@@ -48,9 +46,9 @@ Hiveory AI is a local-first, AI-native desktop dev environment. You open a proje
 
 **5. Let memory flow** — For MCP-capable agents, a `nectar_query` tool is registered so the agent pulls ranked memory on demand. For others, a compact handoff summary is injected at boot. A visible role badge and branch indicator appears on panes that belong to an active mission.
 
-**6. Coordinate multiple agents (v2)** — Talk to QueenBee in the right-side conversational dock. QueenBee reads Nectar for context, breaks goals into tasks with declared file ownership, and dispatches them autonomously — HiveMind creates isolated git worktrees and launches WorkerBees for each task. Track progress via the Board drawer (button in the ADE toolbar, slides in with a clip-path animation inspired by Orca's `WorkspaceKanbanDrawer`). Cards can be dragged across columns with custom pointer-based drag & drop (threshold-gated at 5px, with floating preview and drop indicator). As Builders finish, cards move to Review where a Reviewer diffs and approves. Every agent reads/writes the same Nectar memory.
+**6. Coordinate multiple agents (v2)** — Talk to QueenBee in the right-side conversational dock. QueenBee (Steward mode) breaks a goal into tasks with declared file ownership. Once you approve, its `dispatch_goal` tool creates an isolated git worktree per builder task (via the `create_worktree` Rust command), launches a WorkerBee in each, and drops a board card. Track progress via the Board drawer (button in the ADE toolbar, slides in with a clip-path animation). Cards can be dragged across columns with custom pointer-based drag & drop (threshold-gated at 5px, with floating preview and drop indicator). Every agent reads/writes the same Nectar memory. (Reviewer diff/approve/merge exists as backend commands — `merge_worktree` — but the reviewer UI loop is not yet wired; see the status note above.)
 
-**7. Workspaces** — Click the Workspaces button in the ADE toolbar to open the side panel. Create multiple workspaces (each with its own project folder, pane layout, and running agents). Each workspace shows inline agent status badges (launching/running/idle/error/done) and task card counts. Switching workspaces routes the pane grid to that workspace's WorkerBees — agents in non-active workspaces keep running in the background (per-workspace state routing pattern adapted from Orca's `tabsByWorktree` / `layoutByWorktree`).
+**7. Workspaces** — Click the Workspaces button in the ADE toolbar to open the side panel. Create multiple workspaces (each with its own project folder, pane layout, and running agents). Each workspace shows inline agent status badges (launching/running/idle/error/done) and task card counts. Switching workspaces routes the pane grid to that workspace's WorkerBees — agents in non-active workspaces keep running in the background (per-workspace pane-state routing).
 
 **8. Swap agents freely** — Close one agent, open another. It picks up decisions, conventions, and handoffs recorded by the previous agent from the same `.nectar/` — no re-explaining.
 
@@ -58,13 +56,13 @@ Hiveory AI is a local-first, AI-native desktop dev environment. You open a proje
 
 ## ⚙️ Implementation Process
 
-Hiveory couples a Tauri (Rust) backend with a Next.js frontend. The hard part is **Nectar**: a hybrid-retrieval memory layer shared by every agent.
+Hiveory couples a Tauri (Rust) backend with a Vite + React frontend. The hard part is **Nectar**: a hybrid-retrieval memory layer shared by every agent.
 
 **High-level architecture**
 
 ```mermaid
 flowchart LR
-    U[User] --> UI[Next.js UI]
+    U[User] --> UI[Vite + React UI]
     UI -->|Tauri invoke| RS[Rust Backend]
     RS --> PTY[portable-pty]
     PTY --> AG[CLI Agent Pane]
@@ -72,31 +70,28 @@ flowchart LR
     MCP --> NEC[(nectar.db + memory/*.md)]
     RS --> NEC
     UI -->|stdin fallback| AG
-    UI --> HM[HiveMind Orchestrator]
-    HM --> QB[QueenBee Planner]
-    HM --> TC[TaskComb Kanban]
-    HM --> WT[Git Worktrees]
-    WT --> AG
+    UI --> QB[QueenBee dock: chat + tools]
+    QB -->|dispatch_goal| DS[dispatch.ts]
+    DS -->|create_worktree| RS
+    DS --> TC[TaskComb board card]
+    DS --> AG
 ```
 
-**v2 Multi-agent orchestration flow**
+**v2 Multi-agent orchestration flow** (as wired in the shell)
 
 ```mermaid
 flowchart LR
-    GL[Human Goal] --> QB[QueenBee: Breakdown]
-    QB -->|tasks with owns/reads/depends-on| HM[HiveMind: Orchestrator]
-    HM -->|plan| TC[TaskComb: Board cards]
-    HM -->|conflict check| LR[Lock Registry]
-    HM -->|create worktrees| WT[Git Worktrees]
-    WT --> B1[Builder 1: worktree A]
-    WT --> B2[Builder 2: worktree B]
-    B1 -->|handoff| RV[Reviewer: diff + approve]
-    B2 -->|handoff| RV
-    RV -->|merge + cleanup| D[Done]
+    GL[Human Goal] --> QB[QueenBee Steward: breakdown]
+    QB -->|human approves| DG[dispatch_goal tool]
+    DG -->|per builder task| WT[create_worktree Rust cmd]
+    DG --> TC[TaskComb: board card]
+    WT --> B1[WorkerBee: worktree A]
+    WT --> B2[WorkerBee: worktree B]
     B1 --> NLR[Nectar: shared memory]
     B2 --> NLR
-    RV --> NLR
 ```
+
+> The richer engine in `@hiveory/hivemind` (Lock Registry conflict checks, Reviewer diff → `merge_worktree` cleanup, handoff files) is implemented and unit-tested as a standalone Node package, but is not yet the code path the shell runs — the renderer drives dispatch directly through Rust worktree commands. Wiring the full Orchestrator/Reviewer loop into the app is the next milestone.
 
 **Memory bridge selection (per agent)**
 
@@ -139,18 +134,18 @@ flowchart LR
 | Layer                   | Technology                                                               |
 | ----------------------- | ------------------------------------------------------------------------ |
 | Desktop Shell           | Tauri v2 (Rust)                                                           |
-| Frontend                | Next.js (App Router), React, TailwindCSS                                  |
-| Frontend State          | Zustand (persisted settings, workspaces)                                  |
+| Frontend                | Vite + React, TailwindCSS                                                 |
+| Frontend State          | Zustand (settings + providers persisted via `zustand/middleware`; workspaces in-memory) |
 | Terminal                | `xterm.js` + `xterm-addon-webgl` / `-fit` / `-search`                    |
 | PTY                     | `portable-pty` (Rust) via Tauri IPC bridge                                |
-| Editor                  | Monaco (`@monaco-editor/react`)                                          |
 | Storage                 | SQLite — `rusqlite` (Rust) + `sql.js` (Node) → `nectar.db`               |
 | Vector Search           | In-DB embeddings + cosine similarity                                      |
 | Keyword Search          | SQLite FTS5 (Rust) / FTS4 mirror (Node)                                   |
 | Memory Parsing          | `gray-matter` + `remark` / `unified`                                      |
 | Agent Bridge            | Model Context Protocol (MCP) stdio server + per-CLI config                |
-| Git Worktree Isolation  | Native `git worktree` via child_process                                   |
-| Kanban                  | Native React components with custom pointer-based drag & drop (inspired by Orca's `use-workspace-kanban-card-pointer-drag.ts`) |
+| Git Worktree Isolation  | `git worktree` via Rust `std::process::Command` (Tauri commands)          |
+| Kanban                  | Native React components with custom pointer-based drag & drop             |
+| Tests                   | Vitest (per package + Hive `src/lib`)                                     |
 | Git                     | `simple-git` (basic status/diff)                                          |
 | Monorepo                | `pnpm` workspaces + Turborepo                                             |
 | Language                | TypeScript, Rust                                                          |
@@ -247,7 +242,10 @@ Hiveory AI has no HTTP server. The frontend talks to the Rust backend through **
 | `is_process_alive`               | Check whether a pane's process is running           |
 | `read_file` / `write_file`       | Filesystem read/write                                |
 | `list_directory`                 | File explorer listing                                |
-| `git_status`                     | Basic git status/diff                                |
+| `git_status`                     | Basic git status (branch + changed-file count)       |
+| `create_worktree`                | Create an isolated git worktree + `agent/<task>` branch for a task |
+| `merge_worktree`                 | Merge an agent branch back, then remove its worktree |
+| `remove_worktree`                | Remove a worktree (force)                            |
 | `ensure_nectar_structure`        | Create the `.nectar/` layout for a project           |
 | `nectar_read_memory_file` / `nectar_write_memory_file` | Read/write memory markdown     |
 | `nectar_list_memory_files`       | List memory files                                    |
@@ -266,18 +264,19 @@ The **Nectar MCP server** additionally exposes one agent-facing tool over stdio:
 ```
 hiveory/
 ├── Hive/                         # Tauri desktop app
-│   ├── src/                      # Next.js frontend
-│   │   ├── app/                  # App Router pages
+│   ├── src/                      # Vite + React frontend
+│   │   ├── main.tsx              # React entry (renders HomePage)
+│   │   ├── app/                  # HomePage (ADE shell)
 │   │   ├── components/
-│   │   │   ├── editor/           # Monaco editor + file explorer
-│   │   │   ├── queenbee/         # QueenBee AgentDock conversational panel
+│   │   │   ├── ade/              # ADE docks: worktree sidebar, right dock, session history
+│   │   │   ├── queenbee/         # QueenBee conversational chat (Steward/Forager/Stinger)
 │   │   │   ├── settings/         # Settings page: ProvidersSection + ModelsSection
 │   │   │   ├── terminal/         # xterm panes + layout
 │   │   │   ├── workerbees/       # CLI agent panes + picker + RoleBadge
-│   │   │   └── workspace/        # Workspaces side panel
-│   │   ├── stores/               # Zustand stores (settings, workerbees, workspaces, providers)
-│   │   └── lib/                  # Nectar client + Tauri helpers
-│   └── src-tauri/                # Rust: PTY, filesystem, Nectar IPC, git
+│   │   │   └── workspace/        # Workspaces side panel + tab strip
+│   │   ├── stores/               # Zustand stores (settings, workerbees, workspaces, providers, project)
+│   │   └── lib/                  # Nectar client, Tauri helpers, queenbeeTools, dispatch
+│   └── src-tauri/                # Rust: PTY, filesystem, Nectar IPC, git + worktree
 │       ├── src/lib.rs
 │       ├── icons/
 │       └── tauri.conf.json
@@ -302,10 +301,11 @@ hiveory/
 │   │   └── index.ts
 │   └── tests/
 │
-├── TaskComb/                     # Kanban board (v2, standalone) — includes React components (drawer, lanes, cards, drag & drop)
+├── TaskComb/                     # Kanban board (v2, standalone)
 │   ├── src/
 │   │   ├── board.ts              # Column state + card CRUD
-│   │   ├── dispatch.ts           # Drag-to-dispatch → HiveMind command
+│   │   ├── dispatch.ts           # Build a dispatch command from a card
+│   │   ├── components/           # React board UI: TaskCombDrawer/LaneGrid/StatusLane/Card + drag & drop hooks
 │   │   └── index.ts
 │   └── tests/
 │
@@ -352,14 +352,16 @@ hiveory/
 - Per-CLI builders: `opencodeConfig`, `claudeCodeConfig`, `codexConfig`, `kiloCodeConfig`, `clineConfig`, `antigravityConfig`
 - `NECTAR_QUERY_TOOL`, `runNectarQuery(projectPath, args)` (from `tools/nectar-query`)
 
-**`@hiveory/hivemind`** (`HiveMind/src/index.ts`) — v2
-- `HiveMind` — top-level class: `create()`, plan/dispatch/complete/approve/reject
-- `AgentRegistry` — track WorkerBees, status lifecycle, mission queries
-- `LockRegistry` — advisory file-ownership conflict detection
-- `WorktreeManager` — `git worktree add/remove/merge-and-remove` wrapper
-- `HandoffManager` — read/write `.nectar/agents/handoffs/<task>.md`
-- `RoleManager` — four fixed roles: Coordinator, Builder, Scout, Reviewer
-- `Orchestrator` — `plan()`, `dispatch()`, `complete()`, `approve()`, `reject()`
+**`@hiveory/hivemind`** (`HiveMind/src/index.ts`) — v2, Node-only (uses `child_process`/`fs`)
+- `HiveMind` — the only exported value; a top-level class exposing `create()` and readonly instance fields below. Also exports its types (`Role`, `AgentRecord`, `AgentStatus`, `LockConflict`, `HandoffEntry`, `WorktreeInfo`).
+- `.registry` — `AgentRegistry`: track WorkerBees, status lifecycle, mission queries
+- `.locks` — `LockRegistry`: advisory file-ownership conflict detection
+- `.worktree` — `WorktreeManager`: `git worktree add/remove/merge-and-remove` wrapper
+- `.handoffs` — `HandoffManager`: read/write `.nectar/agents/handoffs/<task>.md`
+- `.roles` — `RoleManager`: four fixed roles (Coordinator, Builder, Scout, Reviewer)
+- `.orchestrator` — `Orchestrator`: `plan()`, `dispatch()`, `complete()`, `approve()`, `reject()`
+
+> Note: because this package imports `node:child_process`/`node:fs`, it cannot run in the Tauri renderer. The shell's dispatch path uses Rust worktree commands + `Hive/src/lib/dispatch.ts` instead (see status note).
 
 **`@hiveory/queenbee`** (`QueenBee/src/index.ts`) — v2
 - `breakdown()` / `templateBreakdown()` — goal → task list with owns/reads/depends-on
@@ -380,45 +382,35 @@ hiveory/
 - 10 adapters: `OpenCodeAdapter`, `ClaudeCodeAdapter`, `CodexAdapter`, `KiloAdapter`, `ClineAdapter`, `AntigravityAdapter`, `AiderAdapter`, `KimiCodeAdapter`, `CursorAdapter`, `KiroAdapter`
 - `buildCliConfig(cli, spec, options)` — resolve per-CLI MCP config (re-exported from `cli-configs/`)
 
-## ⬇️ Download Release Apps
+## ⬇️ Building Release Apps
 
-Prebuilt Windows installers (x64) are produced by `pnpm tauri:build` at
-`Hive/src-tauri/target/release/bundle/`:
+No prebuilt binaries are published yet. Running `pnpm tauri:build` (from `Hive/`)
+produces Windows installers under `Hive/src-tauri/target/release/bundle/`:
 
-| Installer                              | Type          | Size    |
-| -------------------------------------- | ------------- | ------- |
-| `Hiveory AI_0.1.0_x64-setup.exe`       | NSIS setup    | ~66 MB  |
-| `Hiveory AI_0.1.0_x64_en-US.msi`       | MSI installer | ~68 MB  |
+| Output                                 | Type          |
+| -------------------------------------- | ------------- |
+| `Hiveory AI_<version>_x64-setup.exe`   | NSIS setup    |
+| `Hiveory AI_<version>_x64_en-US.msi`   | MSI installer |
 
-A standalone executable is also available at
-`Hive/src-tauri/target/release/hiveory-ai.exe`.
+The standalone executable is at `Hive/src-tauri/target/release/hiveory-ai.exe`.
 
-## 📄 Reference
+## 📄 ADE Redesign — changelog
 
-A detailed feature mapping between **Hiveory v2** and **Orca** (Stably AI's parallel-agent IDE) lives in [`SIMILAR.md`](./SIMILAR.md). It documents Orca's implementations for workspaces, git worktree isolation, kanban board UI/UX, drag-and-drop mechanics, and session persistence — along with which patterns apply to Hiveory and which are out of scope.
+Key changes in the ADE (Agent Development Environment) UI/UX pass:
 
-### ADE Redesign Pass (Orca-inspired)
-
-The following changes were made during the ADE UI/UX redesign pass, using Orca as a visual and interaction reference:
-
-| Change | Orca source | Files affected |
-|---|---|---|
-| Kanban board replaced with slide-out drawer using `clip-path` animation | `WorkspaceKanbanDrawer.tsx`, `main.css:1614` | New in `TaskComb/src/components/`: `TaskCombDrawer.tsx`, `TaskCombLaneGrid.tsx`, `TaskCombStatusLane.tsx`, `TaskCombCard.tsx`, `TaskCombDrawerHeader.tsx` (renamed from Orca's `WorkspaceKanban*` to Hiveory vocab) |
-| Custom pointer-based drag & drop (threshold-gated, floating preview, drop indicator) | `use-workspace-kanban-card-pointer-drag.ts` | New in `TaskComb/src/components/`: `use-workspace-kanban-card-pointer-drag.ts` |
-| Multi-selection (click/shift/cmd) | `use-workspace-kanban-selection.ts` | New in `TaskComb/src/components/`: `use-workspace-kanban-selection.ts` |
-| Column resize (pointer + keyboard) | `use-workspace-kanban-column-resize.ts` | New in `TaskComb/src/components/`: `use-workspace-kanban-column-resize.ts` |
-| Board open/close/drag-preview state machine | `useWorkspaceBoardPanel.ts` | New in `TaskComb/src/components/`: `useTaskCombBoardPanel.ts` |
-| Toolbar pulse animation during drag preview | `main.css:1649` | `Hive/src/app/globals.css` |
-| Workspace panel: agent status badges per workspace | `WorktreeCardAgents.tsx` | `Hive/src/components/workspace/WorkspacesPanel.tsx` (redesigned) |
-| Per-workspace WorkerBee state routing (switch workspace → switch grid) | `setActiveWorktree`, `tabsByWorktree` pattern | `Hive/src/components/workerbees/WorkerBeesPanel.tsx`, `Hive/src/app/HomePage.tsx`, `Hive/src/stores/workspaceStore.ts`, `Hive/src/stores/workerBeesStore.ts` |
-| Task card data model enriched with `sortOrder`, `owns`, `reads`, `dependsOn`, `blockingReason` | `TaskCard` type adapted from Orca's workspace-status model per AGENTS1.md §3.2 | `TaskComb/src/board.ts` (canonical type), `Hive/src/stores/workspaceStore.ts` (imports from `@hiveory/taskcomb`) |
-| Left sidebar: Workspace-grouped worktree rows with live-status dot, primary badge, subtitle, search + filter, resizable (min 220px / max 500px) | `WorktreeCard.tsx`, `WorktreeCardStatusSlot.tsx`, `StatusIndicator.tsx`, `SidebarFilter.tsx`, `useSidebarResize` (min 220 / max 500) | New `Hive/src/components/ade/ADEWorktreeSidebar.tsx` |
-| Right panel: Agent Session History with scope tabs ("This worktree" / "This workspace" / "All"), search, collapsible agent-type group headers, session cards with branch chip and relative timestamp | `AiVaultPanel.tsx`, `AiVaultPanelHeader.tsx`, `AiVaultPanelControls.tsx` (VaultScopeSwitch, VaultGroupHeader), `AiVaultSessionRow.tsx`, `AiVaultSessionVirtualList.tsx` | New `Hive/src/components/ade/ADESessionHistory.tsx` |
-| Backend: `nectar_list_sessions` Tauri IPC command — reads `.nectar/agents/sessions/*.md`, parses frontmatter, returns sorted/filtered session entries | Orca's `ai-vault-types.ts` (AiVaultSession, AiVaultListArgs/Result) adapted for Nectar's file-based model per AGENTS.md §3 (no AI Vault scanners) | `Hive/src-tauri/src/lib.rs` (new `nectar_list_sessions` command, extended `NectarLogSessionRequest` with `title`/`branch`/`worktree_id`/`message_count`), `Hive/src/lib/nectar.ts` (new `listSessions()` method, `NectarSessionEntry` type) |
-| Left sidebar flattened: one flat row per workspace (no group/child nesting), inline rename, branch label, agent/task counts | Orca's flat `WorktreeList` — no nesting per AGENTS.md §3.1 (workspace = worktree 1:1) | `Hive/src/components/ade/ADEWorktreeSidebar.tsx` (rewritten) |
-| "Workspaces" tab removed from center toolbar; Board moved to toolbar toggle button (drawer, not tab) | Orca's `useWorkspaceBoardPanel` state machine + `WorkspaceKanbanDrawer` as slide-out overlay | `Hive/src/components/workerbees/WorkerBeesPanel.tsx` (rewritten toolbar) |
-| QueenBee + Sessions merged into single right dock with Chat/History sub-tabs | Orca's `right-sidebar/index.tsx` with activity-bar sub-tabs (workspace-level vault/agents toggles) | New `Hive/src/components/ade/ADERightDock.tsx` |
-| Session scope reduced from 3 to 2 tabs ("This workspace" / "All") — "This worktree" removed as redundant with §0's 1:1 model | Per AGENTS.md §3.1: workspace = worktree, so separate scopes collapsed | `Hive/src/components/ade/ADESessionHistory.tsx` (redesigned scope tabs) |
+| Change | Where |
+|---|---|
+| Kanban board rendered as a slide-out drawer with a `clip-path` animation | `TaskComb/src/components/`: `TaskCombDrawer`, `TaskCombLaneGrid`, `TaskCombStatusLane`, `TaskCombCard`, `TaskCombDrawerHeader` |
+| Custom pointer-based drag & drop (5px threshold, floating preview, drop indicator) | `TaskComb/src/components/use-taskcomb-card-pointer-drag.ts` |
+| Multi-selection (click/shift/cmd) and pointer/keyboard column resize | `use-taskcomb-selection.ts`, `use-taskcomb-column-resize.ts` |
+| Board open/close/drag-preview state machine | `useTaskCombBoardPanel.ts` |
+| Per-workspace WorkerBee state routing (switch workspace → switch grid) | `WorkerBeesPanel.tsx`, `HomePage.tsx`, `workspaceStore.ts`, `workerBeesStore.ts` |
+| Task card model with `sortOrder`, `owns`, `reads`, `dependsOn`, `blockingReason` | `TaskComb/src/board.ts` (canonical type), consumed by `workspaceStore.ts` |
+| Left sidebar: flat one-row-per-workspace list with live-status dot, inline rename, branch label, search + filter, resizable (220–500px) | `Hive/src/components/ade/ADEWorktreeSidebar.tsx` |
+| Right dock: QueenBee chat + Agent Session History merged into Chat/History sub-tabs | `ADERightDock.tsx`, `ADESessionHistory.tsx` |
+| Backend `nectar_list_sessions` command — reads `.nectar/agents/sessions/*.md`, parses frontmatter, returns sorted/filtered entries | `Hive/src-tauri/src/lib.rs`, `Hive/src/lib/nectar.ts` |
+| Git worktree isolation commands (`create_worktree`/`merge_worktree`/`remove_worktree`) + renderer dispatch | `Hive/src-tauri/src/lib.rs`, `Hive/src/lib/dispatch.ts` |
+| QueenBee tool-calling (create workspace, add/move task, launch WorkerBee, dispatch) | `Hive/src/lib/queenbeeTools.ts` |
 
 ## 📄 License
 

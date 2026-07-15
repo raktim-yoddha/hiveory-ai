@@ -135,7 +135,7 @@ export default function ADEWorktreeSidebar({ pinned = true, onTogglePin, onClose
       className="relative h-full flex flex-col bg-bee-surface/70 backdrop-blur-md border-r border-bee-border/50 overflow-hidden shrink-0"
       style={{ width: sidebarWidth }}
     >
-      {/* Header — Orca-style: title + filter + add + close + pin */}
+      {/* Header — title + filter + add + close + pin */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-bee-border/40">
         <div className="flex items-center gap-1.5 min-w-0">
           <button
@@ -203,7 +203,7 @@ export default function ADEWorktreeSidebar({ pinned = true, onTogglePin, onClose
         </div>
       </div>
 
-      {/* Flat workspace list — Orca-style WorktreeCard rows */}
+      {/* Flat workspace list — one row per workspace */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-sleek">
         {visibleWorkspaces.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4 text-center">
@@ -227,7 +227,7 @@ export default function ADEWorktreeSidebar({ pinned = true, onTogglePin, onClose
                 className="relative"
                 onContextMenu={(e) => handleContextMenu(e, ws)}
               >
-                {/* Main row — Orca-style card with visual states */}
+                {/* Main row — workspace card with visual states */}
                 <div
                   onClick={() => { if (!isDeleting) activateAndSync(ws.id); }}
                   className={`group flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-all border-b border-bee-border/10 last:border-b-0 ${
@@ -238,7 +238,7 @@ export default function ADEWorktreeSidebar({ pinned = true, onTogglePin, onClose
                         : "text-bee-textDim hover:text-bee-text hover:bg-bee-border/20 hover:border-l-2 hover:border-l-bee-border/30"
                   }`}
                 >
-                  {/* Status dot — green/amber/grey (Orca's StatusIndicator pattern) */}
+                  {/* Status dot — green/amber/grey */}
                   <span
                     className={`w-2 h-2 rounded-full shrink-0 transition-colors ${
                       isDeleting
@@ -313,7 +313,7 @@ export default function ADEWorktreeSidebar({ pinned = true, onTogglePin, onClose
                     </div>
                   </div>
 
-                  {/* Actions — show on hover (Orca-style) */}
+                  {/* Actions — show on hover */}
                   <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
                     <button
                       onClick={(e) => { e.stopPropagation(); deleteWorkspace(ws.id); }}
@@ -331,7 +331,7 @@ export default function ADEWorktreeSidebar({ pinned = true, onTogglePin, onClose
                   </div>
                 </div>
 
-                {/* Delete overlay — Orca's isDeleting pattern */}
+                {/* Delete overlay — two-step confirm */}
                 {isDeleting && (
                   <div className="absolute inset-x-1 inset-y-0 z-10 flex items-center justify-center rounded-md bg-bee-surface/80 backdrop-blur-[1px]">
                     <div className="inline-flex items-center gap-2 rounded-full bg-bee-surfaceHi border border-bee-border/60 px-3 py-1 text-[11px] font-medium text-bee-text shadow-sm">
@@ -358,7 +358,7 @@ export default function ADEWorktreeSidebar({ pinned = true, onTogglePin, onClose
         )}
       </div>
 
-      {/* Context menu — Orca-style DropdownMenu */}
+      {/* Context menu */}
       {contextMenu && (
         <div
           className="fixed z-50 min-w-40 py-1 rounded-lg glass-hi animate-fade-in shadow-glassHi"
@@ -392,7 +392,7 @@ export default function ADEWorktreeSidebar({ pinned = true, onTogglePin, onClose
         </div>
       )}
 
-      {/* Resize handle — Orca-style, extends beyond sidebar */}
+      {/* Resize handle — extends beyond sidebar */}
       <div
         className="absolute -right-1.5 top-0 z-10 flex h-full w-3 cursor-col-resize items-stretch justify-center group"
         onMouseDown={handleResizeStart}
@@ -400,7 +400,7 @@ export default function ADEWorktreeSidebar({ pinned = true, onTogglePin, onClose
         <div className="h-full w-px bg-bee-border/40 transition-colors group-hover:bg-bee-gold/60 group-active:bg-bee-gold" />
       </div>
 
-      {/* Workspace creation dialog — Orca's NewWorkspaceComposerModal pattern */}
+      {/* Workspace creation dialog */}
       <WorkspaceCreateDialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}

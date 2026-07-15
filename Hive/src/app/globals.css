@@ -180,7 +180,7 @@ body {
   display: none;
 }
 
-/* ===== Kanban board animations (Orca-inspired) ===== */
+/* ===== Kanban board animations ===== */
 
 /* Sheet entry — clip-path reveal from left edge */
 @keyframes workspace-kanban-sheet-in {
@@ -220,7 +220,7 @@ body {
   }
 }
 
-/* Sleek scrollbar for side panels (Orca-inspired) */
+/* Sleek scrollbar for side panels */
 .scrollbar-sleek {
   scrollbar-width: thin;
   scrollbar-color: rgba(201, 162, 39, 0.25) transparent;
