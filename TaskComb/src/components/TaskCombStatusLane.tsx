@@ -1,7 +1,7 @@
 import { Plus } from 'lucide-react';
 import type { TaskCard, ColumnDefinition, ColumnId } from '../board.js';
-import WorkspaceKanbanCard from './WorkspaceKanbanCard.js';
-import { useWorkspaceKanbanColumnResize } from './use-workspace-kanban-column-resize.js';
+import TaskCombCard from './TaskCombCard.js';
+import { useTaskCombColumnResize } from './use-taskcomb-column-resize.js';
 
 interface Props {
   column: ColumnDefinition;
@@ -14,11 +14,11 @@ interface Props {
   onAddTask?: (colId: ColumnId) => void;
 }
 
-export default function WorkspaceKanbanStatusLane({
+export default function TaskCombStatusLane({
   column, tasks, selectedIds, columnWidth, onCommitWidth,
   onCardPointerDownCapture, onCardClick, onAddTask,
 }: Props) {
-  const { onColumnResizePointerDown, onColumnResizeKeyDown } = useWorkspaceKanbanColumnResize(columnWidth, onCommitWidth);
+  const { onColumnResizePointerDown, onColumnResizeKeyDown } = useTaskCombColumnResize(columnWidth, onCommitWidth);
 
   return (
     <section data-workspace-status-drop-target data-workspace-status={column.id}
@@ -47,7 +47,7 @@ export default function WorkspaceKanbanStatusLane({
           <div className="text-[10px] text-bee-textMuted text-center py-4 italic">No tasks</div>
         ) : (
           tasks.map((task) => (
-            <WorkspaceKanbanCard key={task.id} task={task} isSelected={selectedIds.has(task.id)}
+            <TaskCombCard key={task.id} task={task} isSelected={selectedIds.has(task.id)}
               onPointerDownCapture={onCardPointerDownCapture} onClick={(e) => onCardClick?.(e, task.id)} />
           ))
         )}

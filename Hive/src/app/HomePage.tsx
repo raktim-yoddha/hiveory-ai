@@ -301,7 +301,7 @@ export default function HomePage() {
           </div>
 
           <span className="text-[11px] font-medium text-bee-gold bg-bee-gold/10 border border-bee-gold/20 px-2 py-0.5 rounded-full flex-shrink-0">
-            {workerBees.length}/16
+            {workerBees.length}
           </span>
 
           <button
@@ -428,6 +428,7 @@ export default function HomePage() {
               pinned={rightPinned}
               onTogglePin={() => setRightPinned((p) => !p)}
               onClose={() => setRightOpen(false)}
+              onOpenSettings={() => setShowSettings(true)}
             />
           </div>
         )}

@@ -4,7 +4,7 @@ const MIN_WIDTH = 220;
 const MAX_WIDTH = 520;
 const KEYBOARD_STEP = 20;
 
-export function useWorkspaceKanbanColumnResize(committedWidth: number, onCommitWidth: (w: number) => void) {
+export function useTaskCombColumnResize(committedWidth: number, onCommitWidth: (w: number) => void) {
   const [draftWidth, setDraftWidth] = useState(committedWidth);
   const [isResizing, setIsResizing] = useState(false);
   const startXRef = useRef(0);

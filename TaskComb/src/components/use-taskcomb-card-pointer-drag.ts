@@ -15,7 +15,7 @@ interface DragState {
   hasStarted: boolean;
 }
 
-export function useWorkspaceKanbanCardPointerDrag(
+export function useTaskCombCardPointerDrag(
   onDrop: (taskIds: string[], targetColumn: ColumnId, targetIndex?: number) => void,
 ) {
   const dragRef = useRef<DragState | null>(null);

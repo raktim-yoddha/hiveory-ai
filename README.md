@@ -14,6 +14,8 @@ Hiveory AI is a local-first, AI-native desktop dev environment. You open a proje
 - **Model-agnostic** — swap Claude Code → Codex → Aider without losing context
 - **Human-readable memory** — `.nectar/memory/*.md` is plain, git-diffable markdown
 
+> **Implementation status (v2):** The shell, terminal panes, Nectar memory (full Rust-backed read/write/search), the TaskComb board UI, and QueenBee conversational modes (Steward/Forager/Stinger) are wired and working. The multi-agent orchestration spine — QueenBee breakdown → HiveMind dispatch into isolated worktrees → review → merge — exists as standalone, independently-tested packages (`@hiveory/hivemind`, `@hiveory/queenbee`) but is **not yet wired into the Hive shell** (no `create_worktree` command; the shell doesn't call `Orchestrator`). QueenBee is also conversational-only today — it has no tool-calling layer to trigger UI actions. Treat the end-to-end "hand a goal, agents build it" flow as the target, not current behavior.
+
 ## 📑 Table of Contents
 
 - [🚀 How to Use](#-how-to-use)
@@ -359,6 +361,7 @@ hiveory/
 - `DefaultAssignmentStrategy` — task → role + CLI assignment
 - `ProgressTracker` — task status lifecycle (backlog → done)
 - `ReviewRouter` — approval/rejection routing (reassign/retry/complete)
+- `MODE_SYSTEM_PROMPTS` / `detectModeIntent()` / `MODE_LABELS` — Steward/Forager/Stinger mode prompts + intent routing (single-sourced here; the Hive chat imports them rather than re-declaring)
 
 **`@hiveory/taskcomb`** (`TaskComb/src/index.ts`) — v2
 - `Board` — kanban state: `addCard()`, `moveCard()`, `getCardsByColumn()`
@@ -394,11 +397,11 @@ The following changes were made during the ADE UI/UX redesign pass, using Orca a
 
 | Change | Orca source | Files affected |
 |---|---|---|
-| Kanban board replaced with slide-out drawer using `clip-path` animation | `WorkspaceKanbanDrawer.tsx`, `main.css:1614` | New in `TaskComb/src/components/`: `WorkspaceKanbanDrawer.tsx`, `WorkspaceKanbanLaneGrid.tsx`, `WorkspaceKanbanStatusLane.tsx`, `WorkspaceKanbanCard.tsx`, `WorkspaceKanbanDrawerHeader.tsx` |
+| Kanban board replaced with slide-out drawer using `clip-path` animation | `WorkspaceKanbanDrawer.tsx`, `main.css:1614` | New in `TaskComb/src/components/`: `TaskCombDrawer.tsx`, `TaskCombLaneGrid.tsx`, `TaskCombStatusLane.tsx`, `TaskCombCard.tsx`, `TaskCombDrawerHeader.tsx` (renamed from Orca's `WorkspaceKanban*` to Hiveory vocab) |
 | Custom pointer-based drag & drop (threshold-gated, floating preview, drop indicator) | `use-workspace-kanban-card-pointer-drag.ts` | New in `TaskComb/src/components/`: `use-workspace-kanban-card-pointer-drag.ts` |
 | Multi-selection (click/shift/cmd) | `use-workspace-kanban-selection.ts` | New in `TaskComb/src/components/`: `use-workspace-kanban-selection.ts` |
 | Column resize (pointer + keyboard) | `use-workspace-kanban-column-resize.ts` | New in `TaskComb/src/components/`: `use-workspace-kanban-column-resize.ts` |
-| Board open/close/drag-preview state machine | `useWorkspaceBoardPanel.ts` | New in `TaskComb/src/components/`: `useWorkspaceBoardPanel.ts` |
+| Board open/close/drag-preview state machine | `useWorkspaceBoardPanel.ts` | New in `TaskComb/src/components/`: `useTaskCombBoardPanel.ts` |
 | Toolbar pulse animation during drag preview | `main.css:1649` | `Hive/src/app/globals.css` |
 | Workspace panel: agent status badges per workspace | `WorktreeCardAgents.tsx` | `Hive/src/components/workspace/WorkspacesPanel.tsx` (redesigned) |
 | Per-workspace WorkerBee state routing (switch workspace → switch grid) | `setActiveWorktree`, `tabsByWorktree` pattern | `Hive/src/components/workerbees/WorkerBeesPanel.tsx`, `Hive/src/app/HomePage.tsx`, `Hive/src/stores/workspaceStore.ts`, `Hive/src/stores/workerBeesStore.ts` |

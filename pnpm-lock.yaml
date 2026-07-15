@@ -23,6 +23,9 @@ importers:
       '@hiveory/nectar-mcp':
         specifier: workspace:*
         version: link:../Nectar/nectar-mcp
+      '@hiveory/queenbee':
+        specifier: workspace:*
+        version: link:../QueenBee
       '@hiveory/taskcomb':
         specifier: workspace:*
         version: link:../TaskComb

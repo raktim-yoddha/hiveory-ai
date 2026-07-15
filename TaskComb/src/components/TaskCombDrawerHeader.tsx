@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 
 interface Props { selectedCount: number; onClose: () => void; }
 
-export default function WorkspaceKanbanDrawerHeader({ selectedCount, onClose }: Props) {
+export default function TaskCombDrawerHeader({ selectedCount, onClose }: Props) {
   return (
     <div className="flex items-center justify-between px-4 py-3 border-b border-bee-border/50 shrink-0">
       <div className="flex items-center gap-2">

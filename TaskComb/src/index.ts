@@ -4,13 +4,13 @@ export type { TaskCard, ColumnId, ColumnDefinition } from './board.js';
 export type { DispatchCommand, DispatchResolver } from './dispatch.js';
 
 // React kanban UI components (re-exported from components/ namespace)
-export { default as WorkspaceKanbanDrawer } from './components/WorkspaceKanbanDrawer.js';
-export { default as WorkspaceKanbanLaneGrid } from './components/WorkspaceKanbanLaneGrid.js';
-export { default as WorkspaceKanbanStatusLane } from './components/WorkspaceKanbanStatusLane.js';
-export { default as WorkspaceKanbanCard } from './components/WorkspaceKanbanCard.js';
-export { default as WorkspaceKanbanDrawerHeader } from './components/WorkspaceKanbanDrawerHeader.js';
-export { useWorkspaceBoardPanel } from './components/useWorkspaceBoardPanel.js';
-export { useWorkspaceKanbanCardPointerDrag } from './components/use-workspace-kanban-card-pointer-drag.js';
-export { useWorkspaceKanbanSelection } from './components/use-workspace-kanban-selection.js';
-export { useWorkspaceKanbanColumnResize } from './components/use-workspace-kanban-column-resize.js';
-export { groupTasksByColumn } from './components/workspace-kanban-worktree-groups.js';
+export { default as TaskCombDrawer } from './components/TaskCombDrawer.js';
+export { default as TaskCombLaneGrid } from './components/TaskCombLaneGrid.js';
+export { default as TaskCombStatusLane } from './components/TaskCombStatusLane.js';
+export { default as TaskCombCard } from './components/TaskCombCard.js';
+export { default as TaskCombDrawerHeader } from './components/TaskCombDrawerHeader.js';
+export { useTaskCombBoardPanel } from './components/useTaskCombBoardPanel.js';
+export { useTaskCombCardPointerDrag } from './components/use-taskcomb-card-pointer-drag.js';
+export { useTaskCombSelection } from './components/use-taskcomb-selection.js';
+export { useTaskCombColumnResize } from './components/use-taskcomb-column-resize.js';
+export { groupTasksByColumn } from './components/taskcomb-worktree-groups.js';

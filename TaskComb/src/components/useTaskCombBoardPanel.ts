@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type BoardPanelState = 'closed' | 'drag-preview' | 'open';
 
-export function useWorkspaceBoardPanel() {
+export function useTaskCombBoardPanel() {
   const [state, setState] = useState<BoardPanelState>('closed');
   const openRef = useRef(false);
   const previewRef = useRef(false);

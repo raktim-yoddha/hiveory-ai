@@ -16,6 +16,7 @@ import {
   Download,
   ExternalLink,
   Terminal,
+  Check,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore, envForCli } from "@/stores/settingsStore";
@@ -202,7 +203,7 @@ function CLINotFoundCard({ cli, cliName, onClose }: CLINotFoundCardProps) {
               title="Copy install command"
             >
               {copied ? (
-                <span className="text-[10px] text-bee-gold font-semibold">✓</span>
+                <Check size={11} className="text-bee-gold" />
               ) : (
                 <Copy size={11} />
               )}

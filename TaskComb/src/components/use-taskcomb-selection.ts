@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 
-export function useWorkspaceKanbanSelection(taskIds: string[]) {
+export function useTaskCombSelection(taskIds: string[]) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [anchorId, setAnchorId] = useState<string | null>(null);
 

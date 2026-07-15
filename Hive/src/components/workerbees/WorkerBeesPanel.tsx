@@ -5,7 +5,7 @@ import WorkerBeePane from "./WorkerBeePane";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkerBeesStore } from "@/stores/workerBeesStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
-import { useWorkspaceBoardPanel, WorkspaceKanbanDrawer } from "@hiveory/taskcomb";
+import { useTaskCombBoardPanel, TaskCombDrawer } from "@hiveory/taskcomb";
 import { Bot, Hexagon } from "lucide-react";
 
 interface WorkerBeesPanelProps {
@@ -32,7 +32,7 @@ export default function WorkerBeesPanel({ workingDir }: WorkerBeesPanelProps) {
 
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
 
-  const { isOpenOrPreview, isDragPreview, openBoard, closeBoard, toggleBoard, previewBoard, solidifyBoard, cancelBoardPreview } = useWorkspaceBoardPanel();
+  const { isOpenOrPreview, isDragPreview, openBoard, closeBoard, toggleBoard, previewBoard, solidifyBoard, cancelBoardPreview } = useTaskCombBoardPanel();
 
   const [editingBee, setEditingBee] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -170,7 +170,7 @@ export default function WorkerBeesPanel({ workingDir }: WorkerBeesPanelProps) {
 
       {/* Kanban board drawer (triggered by board icon in title bar) */}
       {isOpenOrPreview && activeWorkspace && (
-        <WorkspaceKanbanDrawer
+        <TaskCombDrawer
           open={!isDragPreview}
           dragPreview={isDragPreview}
           tasks={activeWorkspace.taskCards}

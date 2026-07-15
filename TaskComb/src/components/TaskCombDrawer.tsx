@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ColumnId, TaskCard } from '../board.js';
 import { DEFAULT_COLUMNS, Board, COLUMNS } from '../board.js';
-import { groupTasksByColumn } from './workspace-kanban-worktree-groups.js';
-import { useWorkspaceKanbanSelection } from './use-workspace-kanban-selection.js';
-import { useWorkspaceKanbanCardPointerDrag } from './use-workspace-kanban-card-pointer-drag.js';
-import WorkspaceKanbanLaneGrid from './WorkspaceKanbanLaneGrid.js';
-import WorkspaceKanbanDrawerHeader from './WorkspaceKanbanDrawerHeader.js';
+import { groupTasksByColumn } from './taskcomb-worktree-groups.js';
+import { useTaskCombSelection } from './use-taskcomb-selection.js';
+import { useTaskCombCardPointerDrag } from './use-taskcomb-card-pointer-drag.js';
+import TaskCombLaneGrid from './TaskCombLaneGrid.js';
+import TaskCombDrawerHeader from './TaskCombDrawerHeader.js';
 
 const BOARD_COLUMN_WIDTH_DEFAULT = 280;
 
-export interface WorkspaceKanbanDrawerProps {
+export interface TaskCombDrawerProps {
   open: boolean;
   dragPreview?: boolean;
   tasks: TaskCard[];
@@ -18,9 +18,9 @@ export interface WorkspaceKanbanDrawerProps {
   style?: React.CSSProperties;
 }
 
-export default function WorkspaceKanbanDrawer({
+export default function TaskCombDrawer({
   open, dragPreview, tasks, onTasksChange, onClose, style,
-}: WorkspaceKanbanDrawerProps) {
+}: TaskCombDrawerProps) {
   const boardRef = useRef<HTMLDivElement>(null);
   const [columnWidth, setColumnWidth] = useState(BOARD_COLUMN_WIDTH_DEFAULT);
 
@@ -28,7 +28,7 @@ export default function WorkspaceKanbanDrawer({
   const tasksByColumn = groupTasksByColumn(tasks, columns);
   const allTaskIds = tasks.map((t) => t.id);
 
-  const { selectedIds, selectedCount, clearSelection, handleGesture } = useWorkspaceKanbanSelection(allTaskIds);
+  const { selectedIds, selectedCount, clearSelection, handleGesture } = useTaskCombSelection(allTaskIds);
 
   const handleDrop = (taskIds: string[], targetColumn: ColumnId, targetIndex?: number) => {
     const updated = tasks.map((t) => {
@@ -40,7 +40,7 @@ export default function WorkspaceKanbanDrawer({
     onTasksChange(updated);
   };
 
-  const { onPointerDownCapture } = useWorkspaceKanbanCardPointerDrag(handleDrop);
+  const { onPointerDownCapture } = useTaskCombCardPointerDrag(handleDrop);
 
   const handleCardClick = (e: React.MouseEvent, taskId: string) => handleGesture(e, taskId);
 
@@ -89,7 +89,7 @@ export default function WorkspaceKanbanDrawer({
   return (
     <div ref={boardRef} data-workspace-board-selection-surface
       data-workspace-board-drag-preview={dragPreview ? 'true' : undefined}
-      className="workspace-kanban-sheet-content absolute z-50 flex flex-col overflow-hidden"
+      className="taskcomb-sheet-content absolute z-50 flex flex-col overflow-hidden"
       style={{
         top: '36px', bottom: 0,
         left: style?.left ?? '0px',
@@ -104,12 +104,12 @@ export default function WorkspaceKanbanDrawer({
         ...style,
       }}
     >
-      <WorkspaceKanbanDrawerHeader selectedCount={selectedCount} onClose={onClose} />
+      <TaskCombDrawerHeader selectedCount={selectedCount} onClose={onClose} />
       {tasks.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-[11px] text-bee-textMuted italic">No tasks — create one to start tracking</div>
       ) : (
         <div className="flex-1 overflow-hidden">
-          <WorkspaceKanbanLaneGrid columns={columns} tasksByColumn={tasksByColumn}
+          <TaskCombLaneGrid columns={columns} tasksByColumn={tasksByColumn}
             selectedIds={selectedIds} columnWidth={columnWidth} onCommitWidth={setColumnWidth}
             onCardPointerDownCapture={onPointerDownCapture} onCardClick={handleCardClick} onAddTask={handleAddTask} />
         </div>

@@ -12,7 +12,7 @@ const ROLE_DOT: Record<string, string> = {
   builder: 'bg-bee-gold', reviewer: 'bg-blue-400', scout: 'bg-purple-400', coordinator: 'bg-red-400',
 };
 
-export default function WorkspaceKanbanCard({ task, isSelected, onPointerDownCapture, onClick }: Props) {
+export default function TaskCombCard({ task, isSelected, onPointerDownCapture, onClick }: Props) {
   return (
     <div
       data-workspace-board-card-id={task.id}
