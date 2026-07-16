@@ -468,8 +468,9 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Main Content — position:relative so floating (unpinned) sidebars anchor
+          here, below the title bar, instead of sliding up behind it. */}
+      <div className="relative flex-1 flex overflow-hidden">
         {/* Left sidebar — docked (takes space) when pinned, floating overlay when unpinned */}
         {leftOpen && (
           <div className={`${leftTakesSpace ? "relative flex-shrink-0" : "absolute left-0 top-0 bottom-0 z-40 shadow-2xl shadow-black/40"}`}>
