@@ -953,8 +953,9 @@ export default function WorkerBeePane({
 
   return (
     <div className="flex flex-col h-full bg-[#1a1614]/85 overflow-hidden">
-      {/* pane header */}
-      <div className="h-8 glass-toolbar border-b border-bee-border/50 flex items-center justify-between px-2">
+      {/* pane header — gold-tinted so WorkerBee (agent) panes read differently
+          from plain shell terminals, which keep the dark toolbar. */}
+      <div className="h-8 glass-toolbar bg-bee-gold/[0.07] border-b border-bee-gold/30 flex items-center justify-between px-2">
         <div className="flex items-center gap-2 min-w-0">
           {isEditing && onEditChange ? (
             <input

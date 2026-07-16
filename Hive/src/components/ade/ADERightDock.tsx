@@ -321,6 +321,8 @@ const RIGHT_DOCK_MAX = 500;
 export default function ADERightDock({ projectPath, activeWorkspaceId, pinned = true, onTogglePin, onClose, onOpenSettings, onOpenProject }: Props) {
   const [activeTab, setActiveTab] = useState<DockTab>("chat");
   const [dockWidth, setDockWidth] = useState(320);
+  // Not enough room for five labelled tabs + pin + close → show icons only.
+  const compact = dockWidth < 440;
   const [isResizing, setIsResizing] = useState(false);
   const dockRef = useRef<HTMLDivElement>(null);
 
@@ -353,22 +355,25 @@ export default function ADERightDock({ projectPath, activeWorkspaceId, pinned = 
       className="relative h-full flex flex-col bg-bee-surface/70 backdrop-blur-md border-l border-bee-border/50 overflow-hidden"
       style={{ width: dockWidth, minWidth: RIGHT_DOCK_MIN, maxWidth: RIGHT_DOCK_MAX }}
     >
-      {/* Dock header with sub-tabs */}
-      <div className="flex items-center border-b border-bee-border/40 shrink-0 overflow-x-auto no-scrollbar">
+      {/* Dock header with sub-tabs. Below ~440px the labels don't fit alongside
+          all five tabs + pin + close, so collapse to icon-only rather than
+          letting the row scroll and hide the pin/close controls. */}
+      <div className="flex items-center border-b border-bee-border/40 shrink-0">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1 flex-1 h-8 px-2 text-[11px] font-medium transition-colors whitespace-nowrap ${
+              title={tab.label}
+              className={`flex items-center justify-center gap-1 flex-1 min-w-0 h-8 px-2 text-[11px] font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.id
                   ? "text-bee-goldHi bg-bee-gold/[0.06] border-b-2 border-bee-gold"
                   : "text-bee-textMuted hover:text-bee-textDim hover:bg-bee-border/20"
               }`}
             >
               <Icon className="size-3.5 shrink-0" />
-              <span className="truncate">{tab.label}</span>
+              {!compact && <span className="truncate">{tab.label}</span>}
             </button>
           );
         })}
