@@ -124,6 +124,21 @@ export const TOOLS: ToolDef[] = [
     mutates: false,
   },
   {
+    name: "list_dispatched",
+    description: "List tasks that were dispatched into isolated git worktrees and are awaiting approval.",
+    params: {},
+    required: [],
+    mutates: false,
+  },
+  {
+    name: "approve_task",
+    description:
+      "Approve a dispatched task: merge its agent branch back into the project and remove its worktree. Only call after the human has approved the merge.",
+    params: { taskId: { type: "string", description: "Task id from list_dispatched" } },
+    required: ["taskId"],
+    mutates: true,
+  },
+  {
     name: "dispatch_goal",
     description:
       "Break a goal into tasks and dispatch WorkerBees for each — creates an isolated git worktree per builder task, launches the agent, and adds a board card. Only call after the human has approved dispatching.",
@@ -139,6 +154,8 @@ export const TOOLS: ToolDef[] = [
  */
 export const ASYNC_TOOLS = new Set([
   "dispatch_goal",
+  "approve_task",
+  "list_dispatched",
   "list_memory_files",
   "read_memory_file",
   "search_memory",

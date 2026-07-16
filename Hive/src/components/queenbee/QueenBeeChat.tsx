@@ -17,8 +17,10 @@ import {
   type ToolContext,
 } from "@/lib/queenbeeTools";
 import { useProjectStore } from "@/stores/projectStore";
+import { useDispatchStore } from "@/stores/dispatchStore";
 import { dispatchGoal } from "@/lib/dispatch";
 import { Nectar } from "@/lib/nectar";
+import { invoke } from "@tauri-apps/api/core";
 
 interface Message {
   id: string;
@@ -170,7 +172,30 @@ export default function QueenBeeChat({ docked, onToggleDock, onOpenSettings }: Q
             : "No memory matches.";
         }
 
+        if (name === "list_dispatched") {
+          const items = useDispatchStore.getState().dispatched;
+          return items.length
+            ? items.map((d) => `- ${d.taskId}: ${d.title} (${d.cli}) @ ${d.branch}`).join("\n")
+            : "Nothing dispatched is awaiting approval.";
+        }
+
         if (activeMode !== "Steward") throw new ToolError(`Tool "${name}" is not available in ${activeMode} mode.`);
+
+        if (name === "approve_task") {
+          const taskId = String(args.taskId || "");
+          if (!taskId) throw new ToolError('Missing required argument "taskId" for approve_task.');
+          const entry = useDispatchStore.getState().get(taskId);
+          if (!entry) throw new ToolError(`No dispatched task "${taskId}" awaiting approval.`);
+          if (!projectPath) throw new ToolError("No project is open.");
+          await invoke("merge_worktree", {
+            projectPath,
+            branch: entry.branch,
+            worktreePath: entry.worktreePath,
+          });
+          useDispatchStore.getState().remove(taskId);
+          return `Merged ${entry.branch} into the project and removed its worktree.`;
+        }
+
         if (name === "dispatch_goal") {
           const goal = String(args.goal || "");
           if (!goal) throw new ToolError('Missing required argument "goal" for dispatch_goal.');
@@ -185,6 +210,18 @@ export default function QueenBeeChat({ docked, onToggleDock, onOpenSettings }: Q
               s.addTask(s.activeWorkspaceId || s.workspaces[0]?.id || "", title, description);
             },
           });
+          // Remember each worktree so approve_task can merge it later.
+          for (const r of results) {
+            if (r.worktree && !r.error) {
+              useDispatchStore.getState().record({
+                taskId: r.taskId,
+                title: r.title,
+                cli: r.cli,
+                branch: r.worktree.branch,
+                worktreePath: r.worktree.path,
+              });
+            }
+          }
           const ok = results.filter((r) => !r.error);
           const failed = results.filter((r) => r.error);
           const lines = results.map((r) =>

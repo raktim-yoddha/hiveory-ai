@@ -16,11 +16,11 @@ Hiveory AI is a local-first, AI-native desktop dev environment. You open a proje
 
 > **Implementation status (v2):** The shell, terminal panes, Nectar memory (full Rust-backed read/write/search), the TaskComb board UI, and QueenBee conversational modes (Steward/Forager/Stinger) are wired and working.
 >
-> **QueenBee tool-calling** is implemented ([`Hive/src/lib/queenbeeTools.ts`](Hive/src/lib/queenbeeTools.ts)): QueenBee can perform UI actions conversationally — create workspaces, add/move tasks, launch WorkerBees, toggle the board — via provider tool-calling (Anthropic + OpenAI formats), gated per mode (Steward acts; Forager/Stinger are read-only auditors).
+> **QueenBee tool-calling** is implemented ([`Hive/src/lib/queenbeeTools.ts`](Hive/src/lib/queenbeeTools.ts)): QueenBee acts on the app conversationally via provider tool-calling (Anthropic + OpenAI formats), gated per mode. Steward can create workspaces, add/move tasks, launch WorkerBees, toggle the board, open Settings, dispatch, and approve merges; every mode can read Nectar memory (`search_memory`, `read_memory_file`, `list_memory_files`) so Forager/Stinger can audit without mutating.
 >
-> **Orchestration spine:** the git-worktree isolation the Node-only `@hiveory/hivemind` package couldn't provide to the renderer is now backed by Rust Tauri commands (`create_worktree`/`merge_worktree`/`remove_worktree`), and the renderer dispatch service ([`Hive/src/lib/dispatch.ts`](Hive/src/lib/dispatch.ts)) wires `QueenBee.breakdown()` → worktree → WorkerBee launch → board card, reachable through QueenBee's `dispatch_goal` tool after the human approves.
+> **Orchestration spine:** the git-worktree isolation the Node-only `@hiveory/hivemind` package couldn't provide to the renderer is backed by Rust Tauri commands (`create_worktree`/`merge_worktree`/`remove_worktree`). [`Hive/src/lib/dispatch.ts`](Hive/src/lib/dispatch.ts) wires `QueenBee.breakdown()` → worktree → WorkerBee launch → board card via the `dispatch_goal` tool; dispatched worktrees are tracked in `dispatchStore` so `approve_task` can merge the agent branch back and clean up. Both dispatch and approve require explicit human approval in chat first.
 >
-> **Verified** by typecheck, unit tests (`queenbeeTools`, `planDispatch`), and `cargo build`. The full GUI flow (real git worktrees + PTY spawn end-to-end) still needs manual verification in a running desktop build — that path can't be exercised headless.
+> **Verified** by 52 unit tests across all 6 packages, `tsc --noEmit`, and `cargo build`. **Not yet verified by running the desktop app** — the full GUI flow (a real git worktree created, a PTY agent spawned, a branch merged) can't be exercised headless and needs a manual pass with `pnpm tauri:dev`.
 
 ## 📑 Table of Contents
 

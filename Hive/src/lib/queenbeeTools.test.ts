@@ -61,8 +61,11 @@ describe("executeTool", () => {
   });
 
   it("refuses async tools — the host must run them", () => {
+    // Args must satisfy every async tool's `required` list, otherwise the
+    // missing-arg check fires before the async guard we're asserting on.
+    const args = { goal: "x", path: "p", query: "q", taskId: "t-1" };
     for (const name of ASYNC_TOOLS) {
-      expect(() => executeTool("Steward", name, { goal: "x", path: "p", query: "q" }, ctx())).toThrow(/must be executed by the host/);
+      expect(() => executeTool("Steward", name, args, ctx())).toThrow(/must be executed by the host/);
     }
   });
 });
