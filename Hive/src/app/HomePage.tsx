@@ -9,6 +9,8 @@ import { getTauriAPIs, loadTauriAPIs } from "@/lib/tauri";
 import ADEWorktreeSidebar from "@/components/ade/ADEWorktreeSidebar";
 import ADERightDock from "@/components/ade/ADERightDock";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
+import { useProjectStore } from "@/stores/projectStore";
+import { useUiStore } from "@/stores/uiStore";
 import {
   Settings,
   X,
@@ -43,11 +45,16 @@ export default function HomePage() {
   } | null>(null);
   const windowRef = useRef<any>(null);
 
-  // Sidebar state: pinned = takes flex space, unpinned = overlay
+  // Sidebar state: pinned = takes flex space, unpinned = overlay.
+  // Open/closed lives in uiStore so QueenBee's tools can toggle it too.
   const [leftPinned, setLeftPinned] = useState(true);
-  const [leftOpen, setLeftOpen] = useState(true);
   const [rightPinned, setRightPinned] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const leftOpen = useUiStore((s) => s.leftOpen);
+  const rightOpen = useUiStore((s) => s.rightOpen);
+  const setLeftOpen = useUiStore((s) => s.setLeftOpen);
+  const setRightOpen = useUiStore((s) => s.setRightOpen);
+  const toggleLeft = useUiStore((s) => s.toggleLeft);
+  const toggleRight = useUiStore((s) => s.toggleRight);
 
   const workerBees = useWorkerBeesStore((state) => state.workerBees);
   const addWorkerBee = useWorkerBeesStore((state) => state.addWorkerBee);
@@ -94,7 +101,7 @@ export default function HomePage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "b") {
         e.preventDefault();
-        setRightOpen((prev) => !prev);
+        toggleRight();
       }
     };
 
@@ -165,6 +172,7 @@ export default function HomePage() {
 
   const handleFolderSelect = async (folderPath: string) => {
     setProjectPath(folderPath);
+    useProjectStore.getState().setProjectPath(folderPath); // keep the shared store in sync for QueenBee tools/dispatch
     try {
       const apis = getTauriAPIs();
       if (apis?.invoke) {
@@ -266,7 +274,7 @@ export default function HomePage() {
         {/* Left section — sidebar toggles */}
         <div className="flex items-center gap-1 mr-3">
           <button
-            onClick={() => setLeftOpen((p) => !p)}
+            onClick={() => toggleLeft()}
             className={`p-1.5 rounded-md transition-colors ${
               leftOpen
                 ? "text-bee-goldHi bg-bee-gold/10"
@@ -356,7 +364,7 @@ export default function HomePage() {
         {/* Right section — right sidebar toggle + window controls */}
         <div className="flex items-center gap-1 ml-3">
           <button
-            onClick={() => setRightOpen((p) => !p)}
+            onClick={() => toggleRight()}
             className={`p-1.5 rounded-md transition-colors ${
               rightOpen
                 ? "text-bee-goldHi bg-bee-gold/10"
@@ -429,6 +437,7 @@ export default function HomePage() {
               onTogglePin={() => setRightPinned((p) => !p)}
               onClose={() => setRightOpen(false)}
               onOpenSettings={() => setShowSettings(true)}
+              onOpenProject={handleOpenFolder}
             />
           </div>
         )}

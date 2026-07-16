@@ -7,7 +7,9 @@ import type { ColumnId } from "@hiveory/taskcomb";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useProviderStore } from "@/stores/providerStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
-import { useWorkerBeesStore } from "@/stores/workerBeesStore";
+import { useWorkerBeesStore, type GridLayout } from "@/stores/workerBeesStore";
+import { useUiStore } from "@/stores/uiStore";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import {
   toAnthropicTools,
   toOpenAITools,
@@ -40,9 +42,10 @@ interface QueenBeeChatProps {
   docked?: boolean;
   onToggleDock?: () => void;
   onOpenSettings?: () => void;
+  onOpenProject?: () => void;
 }
 
-export default function QueenBeeChat({ docked, onToggleDock, onOpenSettings }: QueenBeeChatProps) {
+export default function QueenBeeChat({ docked, onToggleDock, onOpenSettings, onOpenProject }: QueenBeeChatProps) {
   const [activeMode, setActiveMode] = useState<QueenBeeMode>("Steward");
   const welcomeText: Record<QueenBeeMode, string> = {
     Steward: "I'm QueenBee Steward. Tell me what you want to build and I'll dispatch WorkerBees to execute the work.",
@@ -139,6 +142,62 @@ export default function QueenBeeChat({ docked, onToggleDock, onOpenSettings }: Q
         onOpenSettings();
         return true;
       },
+      deleteWorkspace: (id) => {
+        const s = useWorkspaceStore.getState();
+        if (!s.workspaces.some((w) => w.id === id)) return false;
+        s.deleteWorkspace(id);
+        return true;
+      },
+      renameWorkspace: (id, name) => {
+        const s = useWorkspaceStore.getState();
+        if (!s.workspaces.some((w) => w.id === id)) return false;
+        s.renameWorkspace(id, name);
+        return true;
+      },
+      recolorWorkspace: (id, color) => {
+        const s = useWorkspaceStore.getState();
+        if (!s.workspaces.some((w) => w.id === id)) return false;
+        s.setWorkspaceColor(id, color);
+        return true;
+      },
+      switchWorkspace: (id) => {
+        const s = useWorkspaceStore.getState();
+        if (!s.workspaces.some((w) => w.id === id)) return false;
+        s.setActiveWorkspace(id);
+        return true;
+      },
+      listWorkerBees: () =>
+        useWorkerBeesStore.getState().workerBees.map((b) => ({
+          id: b.id, name: b.customName || b.cliName || b.cli, cli: b.cli,
+        })),
+      removeWorkerBee: (id) => {
+        const s = useWorkerBeesStore.getState();
+        if (!s.workerBees.some((b) => b.id === id)) return false;
+        s.removeWorkerBee(id);
+        return true;
+      },
+      renameWorkerBee: (id, name) => {
+        const s = useWorkerBeesStore.getState();
+        if (!s.workerBees.some((b) => b.id === id)) return false;
+        s.updateWorkerBee(id, { customName: name });
+        return true;
+      },
+      reorderWorkerBee: (from, to) => {
+        const s = useWorkerBeesStore.getState();
+        const n = s.workerBees.length;
+        if (from < 0 || from >= n || to < 0 || to >= n) return false;
+        s.reorderWorkerBees(from, to);
+        return true;
+      },
+      setDefaultWorkerBee: (cli) => useSettingsStore.getState().setDefaultWorkerBee(cli),
+      setGridLayout: (layout) =>
+        useWorkerBeesStore.getState().setGridLayout(
+          layout === "auto" ? "auto" : (Number(layout) as GridLayout),
+        ),
+      maximizePane: (id) => useWorkerBeesStore.getState().setMaximizedPane(id),
+      refitTerminals: () => useWorkerBeesStore.getState().refitTerminals(),
+      setLeftSidebar: (open) => useUiStore.getState().setLeftOpen(open),
+      setRightDock: (open) => useUiStore.getState().setRightOpen(open),
     };
   };
 
@@ -180,6 +239,28 @@ export default function QueenBeeChat({ docked, onToggleDock, onOpenSettings }: Q
         }
 
         if (activeMode !== "Steward") throw new ToolError(`Tool "${name}" is not available in ${activeMode} mode.`);
+
+        if (name === "write_memory") {
+          if (!projectPath) throw new ToolError("No project is open.");
+          const path = String(args.path || "");
+          const content = String(args.content ?? "");
+          if (!path) throw new ToolError('Missing required argument "path" for write_memory.');
+          const nectar = new Nectar(projectPath);
+          await nectar.writeMemoryFile(path, content);
+          return `Wrote ${content.length} chars to .nectar/memory/${path}.`;
+        }
+
+        if (name === "open_project") {
+          if (!onOpenProject) throw new ToolError("Can't open the folder picker from here.");
+          onOpenProject();
+          return "Opened the folder picker — choose a project.";
+        }
+
+        if (name === "open_url") {
+          const url = String(args.url || "http://localhost:3000");
+          await shellOpen(url);
+          return `Opened ${url} in the browser.`;
+        }
 
         if (name === "approve_task") {
           const taskId = String(args.taskId || "");

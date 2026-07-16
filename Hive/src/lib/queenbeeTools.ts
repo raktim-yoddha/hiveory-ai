@@ -32,6 +32,24 @@ export interface ToolContext {
   launchWorkerBee: (cli: string, name?: string) => void;
   setBoardOpen: (open: boolean) => void;
   openSettings: () => boolean;
+  // workspaces
+  deleteWorkspace: (id: string) => boolean;
+  renameWorkspace: (id: string, name: string) => boolean;
+  recolorWorkspace: (id: string, color: string) => boolean;
+  switchWorkspace: (id: string) => boolean;
+  // worker bees
+  listWorkerBees: () => Array<{ id: string; name: string; cli: string }>;
+  removeWorkerBee: (id: string) => boolean;
+  renameWorkerBee: (id: string, name: string) => boolean;
+  reorderWorkerBee: (from: number, to: number) => boolean;
+  setDefaultWorkerBee: (cli: string) => void;
+  // layout
+  setGridLayout: (layout: string) => void;
+  maximizePane: (id: string | null) => void;
+  refitTerminals: () => void;
+  // chrome
+  setLeftSidebar: (open: boolean) => void;
+  setRightDock: (open: boolean) => void;
 }
 
 const COLUMNS = ["backlog", "todo", "in-progress", "review", "done"];
@@ -103,6 +121,104 @@ export const TOOLS: ToolDef[] = [
     mutates: true,
   },
   {
+    name: "delete_workspace",
+    description: "Delete a workspace by id.",
+    params: { id: { type: "string", description: "Workspace id" } },
+    required: ["id"],
+    mutates: true,
+  },
+  {
+    name: "rename_workspace",
+    description: "Rename a workspace.",
+    params: { id: { type: "string", description: "Workspace id" }, name: { type: "string", description: "New name" } },
+    required: ["id", "name"],
+    mutates: true,
+  },
+  {
+    name: "recolor_workspace",
+    description: "Change a workspace's accent color (hex, e.g. #22c55e).",
+    params: { id: { type: "string", description: "Workspace id" }, color: { type: "string", description: "Hex color" } },
+    required: ["id", "color"],
+    mutates: true,
+  },
+  {
+    name: "switch_workspace",
+    description: "Make a workspace the active one.",
+    params: { id: { type: "string", description: "Workspace id" } },
+    required: ["id"],
+    mutates: true,
+  },
+  {
+    name: "list_worker_bees",
+    description: "List running WorkerBees with their ids, names, and CLI.",
+    params: {},
+    required: [],
+    mutates: false,
+  },
+  {
+    name: "remove_worker_bee",
+    description: "Close/remove a WorkerBee pane by id.",
+    params: { id: { type: "string", description: "WorkerBee id" } },
+    required: ["id"],
+    mutates: true,
+  },
+  {
+    name: "rename_worker_bee",
+    description: "Rename a WorkerBee pane.",
+    params: { id: { type: "string", description: "WorkerBee id" }, name: { type: "string", description: "New display name" } },
+    required: ["id", "name"],
+    mutates: true,
+  },
+  {
+    name: "reorder_worker_bee",
+    description: "Move a WorkerBee from one grid position to another (0-based indices).",
+    params: { from: { type: "number", description: "Current index" }, to: { type: "number", description: "Target index" } },
+    required: ["from", "to"],
+    mutates: true,
+  },
+  {
+    name: "set_default_worker_bee",
+    description: "Set the default CLI used when launching a new WorkerBee.",
+    params: { cli: { type: "string", description: "CLI command, e.g. 'claude'" } },
+    required: ["cli"],
+    mutates: true,
+  },
+  {
+    name: "set_grid_layout",
+    description: "Set the WorkerBee grid layout.",
+    params: { layout: { type: "string", description: "'auto', '1', '2', '3', or '4'", enum: ["auto", "1", "2", "3", "4"] } },
+    required: ["layout"],
+    mutates: true,
+  },
+  {
+    name: "maximize_pane",
+    description: "Maximize a WorkerBee pane by id, or pass an empty id to restore the grid.",
+    params: { id: { type: "string", description: "Pane id, or '' to restore" } },
+    required: [],
+    mutates: true,
+  },
+  {
+    name: "refit_terminals",
+    description: "Re-fit all terminal panes to their containers (after a layout change).",
+    params: {},
+    required: [],
+    mutates: true,
+  },
+  {
+    name: "set_left_sidebar",
+    description: "Show or hide the left workspace sidebar.",
+    params: { open: { type: "boolean", description: "true to show" } },
+    required: ["open"],
+    mutates: true,
+  },
+  {
+    name: "set_right_dock",
+    description: "Show or hide the right QueenBee dock.",
+    params: { open: { type: "boolean", description: "true to show" } },
+    required: ["open"],
+    mutates: true,
+  },
+  {
     name: "list_memory_files",
     description: "List the project's Nectar memory files (.nectar/memory/*.md).",
     params: {},
@@ -139,6 +255,31 @@ export const TOOLS: ToolDef[] = [
     mutates: true,
   },
   {
+    name: "write_memory",
+    description:
+      "Write a Nectar memory file (.nectar/memory/*.md). Nectar is QueenBee's memory — use this to record architecture, conventions, and decisions so every agent shares them. Overwrites the file at the given path.",
+    params: {
+      path: { type: "string", description: "Path under .nectar/memory/, e.g. 'architecture.md'" },
+      content: { type: "string", description: "Full markdown content to write" },
+    },
+    required: ["path", "content"],
+    mutates: true,
+  },
+  {
+    name: "open_project",
+    description: "Open the native folder picker so the human can choose a project to open.",
+    params: {},
+    required: [],
+    mutates: true,
+  },
+  {
+    name: "open_url",
+    description: "Open a URL in the system browser — e.g. a running local dev server. Defaults to http://localhost:3000.",
+    params: { url: { type: "string", description: "URL to open; defaults to http://localhost:3000" } },
+    required: [],
+    mutates: true,
+  },
+  {
     name: "dispatch_goal",
     description:
       "Break a goal into tasks and dispatch WorkerBees for each — creates an isolated git worktree per builder task, launches the agent, and adds a board card. Only call after the human has approved dispatching.",
@@ -159,6 +300,9 @@ export const ASYNC_TOOLS = new Set([
   "list_memory_files",
   "read_memory_file",
   "search_memory",
+  "write_memory",
+  "open_project",
+  "open_url",
 ]);
 
 /** Tools available to a given mode. Steward: all. Forager/Stinger: read-only. */
@@ -231,6 +375,62 @@ export function executeTool(
     case "open_settings": {
       const ok = ctx.openSettings();
       return ok ? "Opened Settings." : "Settings can't be opened from here.";
+    }
+    case "delete_workspace":
+      if (!ctx.deleteWorkspace(String(args.id))) throw new ToolError(`No workspace "${args.id}".`);
+      return `Deleted workspace ${args.id}.`;
+    case "rename_workspace":
+      if (!ctx.renameWorkspace(String(args.id), String(args.name))) throw new ToolError(`No workspace "${args.id}".`);
+      return `Renamed workspace ${args.id} to "${args.name}".`;
+    case "recolor_workspace":
+      if (!ctx.recolorWorkspace(String(args.id), String(args.color))) throw new ToolError(`No workspace "${args.id}".`);
+      return `Recolored workspace ${args.id}.`;
+    case "switch_workspace":
+      if (!ctx.switchWorkspace(String(args.id))) throw new ToolError(`No workspace "${args.id}".`);
+      return `Switched to workspace ${args.id}.`;
+    case "list_worker_bees": {
+      const bees = ctx.listWorkerBees();
+      return bees.length ? bees.map((b) => `- ${b.name} (${b.id}) — ${b.cli}`).join("\n") : "No WorkerBees running.";
+    }
+    case "remove_worker_bee":
+      if (!ctx.removeWorkerBee(String(args.id))) throw new ToolError(`No WorkerBee "${args.id}".`);
+      return `Removed WorkerBee ${args.id}.`;
+    case "rename_worker_bee":
+      if (!ctx.renameWorkerBee(String(args.id), String(args.name))) throw new ToolError(`No WorkerBee "${args.id}".`);
+      return `Renamed WorkerBee ${args.id} to "${args.name}".`;
+    case "reorder_worker_bee": {
+      const from = Number(args.from);
+      const to = Number(args.to);
+      if (!Number.isInteger(from) || !Number.isInteger(to)) throw new ToolError("from/to must be integers.");
+      if (!ctx.reorderWorkerBee(from, to)) throw new ToolError(`Index out of range (from=${from}, to=${to}).`);
+      return `Moved WorkerBee from ${from} to ${to}.`;
+    }
+    case "set_default_worker_bee":
+      ctx.setDefaultWorkerBee(String(args.cli));
+      return `Default WorkerBee CLI set to "${args.cli}".`;
+    case "set_grid_layout": {
+      const layout = String(args.layout);
+      if (!["auto", "1", "2", "3", "4"].includes(layout)) throw new ToolError(`Invalid layout "${layout}".`);
+      ctx.setGridLayout(layout);
+      return `Grid layout set to ${layout}.`;
+    }
+    case "maximize_pane": {
+      const id = args.id ? String(args.id) : null;
+      ctx.maximizePane(id);
+      return id ? `Maximized pane ${id}.` : "Restored the grid.";
+    }
+    case "refit_terminals":
+      ctx.refitTerminals();
+      return "Refit all terminals.";
+    case "set_left_sidebar": {
+      const open = args.open === true || args.open === "true";
+      ctx.setLeftSidebar(open);
+      return open ? "Showed the left sidebar." : "Hid the left sidebar.";
+    }
+    case "set_right_dock": {
+      const open = args.open === true || args.open === "true";
+      ctx.setRightDock(open);
+      return open ? "Showed the right dock." : "Hid the right dock.";
     }
     default:
       if (ASYNC_TOOLS.has(name)) {

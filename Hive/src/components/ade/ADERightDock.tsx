@@ -34,6 +34,7 @@ interface Props {
   onTogglePin?: () => void;
   onClose: () => void;
   onOpenSettings?: () => void;
+  onOpenProject?: () => void;
 }
 
 // ── File Tree Node ──────────────────────────────────────────────
@@ -317,7 +318,7 @@ const TABS: { id: DockTab; label: string; icon: typeof MessageSquareText }[] = [
 const RIGHT_DOCK_MIN = 260;
 const RIGHT_DOCK_MAX = 500;
 
-export default function ADERightDock({ projectPath, activeWorkspaceId, pinned = true, onTogglePin, onClose, onOpenSettings }: Props) {
+export default function ADERightDock({ projectPath, activeWorkspaceId, pinned = true, onTogglePin, onClose, onOpenSettings, onOpenProject }: Props) {
   const [activeTab, setActiveTab] = useState<DockTab>("chat");
   const [dockWidth, setDockWidth] = useState(320);
   const [isResizing, setIsResizing] = useState(false);
@@ -399,7 +400,7 @@ export default function ADERightDock({ projectPath, activeWorkspaceId, pinned = 
 
       {/* Tab content */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {activeTab === "chat" && <QueenBeeChat docked onToggleDock={() => {}} onOpenSettings={onOpenSettings} />}
+        {activeTab === "chat" && <QueenBeeChat docked onToggleDock={() => {}} onOpenSettings={onOpenSettings} onOpenProject={onOpenProject} />}
         {activeTab === "history" && (
           <ADESessionHistory projectPath={projectPath} activeWorkspaceId={activeWorkspaceId} />
         )}

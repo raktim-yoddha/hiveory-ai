@@ -11,6 +11,20 @@ function ctx(over: Partial<ToolContext> = {}): ToolContext {
     launchWorkerBee: vi.fn(),
     setBoardOpen: vi.fn(),
     openSettings: vi.fn(() => true),
+    deleteWorkspace: vi.fn(() => true),
+    renameWorkspace: vi.fn(() => true),
+    recolorWorkspace: vi.fn(() => true),
+    switchWorkspace: vi.fn(() => true),
+    listWorkerBees: vi.fn(() => [{ id: "bee-1", name: "claude", cli: "claude" }]),
+    removeWorkerBee: vi.fn(() => true),
+    renameWorkerBee: vi.fn(() => true),
+    reorderWorkerBee: vi.fn(() => true),
+    setDefaultWorkerBee: vi.fn(),
+    setGridLayout: vi.fn(),
+    maximizePane: vi.fn(),
+    refitTerminals: vi.fn(),
+    setLeftSidebar: vi.fn(),
+    setRightDock: vi.fn(),
     ...over,
   };
 }
@@ -63,9 +77,34 @@ describe("executeTool", () => {
   it("refuses async tools — the host must run them", () => {
     // Args must satisfy every async tool's `required` list, otherwise the
     // missing-arg check fires before the async guard we're asserting on.
-    const args = { goal: "x", path: "p", query: "q", taskId: "t-1" };
+    const args = { goal: "x", path: "p", query: "q", taskId: "t-1", content: "c" };
     for (const name of ASYNC_TOOLS) {
       expect(() => executeTool("Steward", name, args, ctx())).toThrow(/must be executed by the host/);
+    }
+  });
+
+  it("performs workspace + worker-bee management", () => {
+    const c = ctx();
+    expect(executeTool("Steward", "rename_workspace", { id: "ws-1", name: "X" }, c)).toContain("Renamed");
+    expect(executeTool("Steward", "switch_workspace", { id: "ws-1" }, c)).toContain("Switched");
+    expect(executeTool("Steward", "remove_worker_bee", { id: "bee-1" }, c)).toContain("Removed");
+    expect(executeTool("Steward", "set_grid_layout", { layout: "2" }, c)).toContain("2");
+    expect(executeTool("Steward", "set_left_sidebar", { open: false }, c)).toContain("Hid");
+  });
+
+  it("rejects a bad grid layout and out-of-range reorder", () => {
+    expect(() => executeTool("Steward", "set_grid_layout", { layout: "9" }, ctx())).toThrow(/Invalid layout/);
+    expect(() => executeTool("Steward", "reorder_worker_bee", { from: 0, to: 99 }, ctx({ reorderWorkerBee: () => false }))).toThrow(/out of range/);
+  });
+
+  it("surfaces missing entities", () => {
+    expect(() => executeTool("Steward", "delete_workspace", { id: "zzz" }, ctx({ deleteWorkspace: () => false }))).toThrow(/No workspace/);
+    expect(() => executeTool("Steward", "remove_worker_bee", { id: "zzz" }, ctx({ removeWorkerBee: () => false }))).toThrow(/No WorkerBee/);
+  });
+
+  it("management tools are Steward-only", () => {
+    for (const name of ["delete_workspace", "set_grid_layout", "set_left_sidebar", "remove_worker_bee"]) {
+      expect(toolsForMode("Forager").map((t) => t.name)).not.toContain(name);
     }
   });
 });
