@@ -31,6 +31,7 @@ export interface ToolContext {
   moveTask: (taskId: string, column: string) => boolean;
   launchWorkerBee: (cli: string, name?: string) => void;
   setBoardOpen: (open: boolean) => void;
+  openSettings: () => boolean;
 }
 
 const COLUMNS = ["backlog", "todo", "in-progress", "review", "done"];
@@ -95,6 +96,34 @@ export const TOOLS: ToolDef[] = [
     mutates: true,
   },
   {
+    name: "open_settings",
+    description: "Open the Settings panel (providers + models configuration).",
+    params: {},
+    required: [],
+    mutates: true,
+  },
+  {
+    name: "list_memory_files",
+    description: "List the project's Nectar memory files (.nectar/memory/*.md).",
+    params: {},
+    required: [],
+    mutates: false,
+  },
+  {
+    name: "read_memory_file",
+    description: "Read one Nectar memory file's contents by its path relative to .nectar/memory/.",
+    params: { path: { type: "string", description: "e.g. 'architecture.md'" } },
+    required: ["path"],
+    mutates: false,
+  },
+  {
+    name: "search_memory",
+    description: "Hybrid (vector + keyword) search over the project's Nectar memory.",
+    params: { query: { type: "string", description: "What to look for" } },
+    required: ["query"],
+    mutates: false,
+  },
+  {
     name: "dispatch_goal",
     description:
       "Break a goal into tasks and dispatch WorkerBees for each — creates an isolated git worktree per builder task, launches the agent, and adds a board card. Only call after the human has approved dispatching.",
@@ -104,8 +133,16 @@ export const TOOLS: ToolDef[] = [
   },
 ];
 
-/** dispatch_goal is executed asynchronously by the host (Tauri + git), not by executeTool. */
-export const ASYNC_TOOLS = new Set(["dispatch_goal"]);
+/**
+ * Tools the host executes asynchronously (Tauri IPC / git) rather than through
+ * the pure executeTool switch below.
+ */
+export const ASYNC_TOOLS = new Set([
+  "dispatch_goal",
+  "list_memory_files",
+  "read_memory_file",
+  "search_memory",
+]);
 
 /** Tools available to a given mode. Steward: all. Forager/Stinger: read-only. */
 export function toolsForMode(mode: QueenBeeMode): ToolDef[] {
@@ -174,10 +211,15 @@ export function executeTool(
       ctx.setBoardOpen(open);
       return open ? "Opened the board." : "Closed the board.";
     }
-    case "dispatch_goal":
-      // Impure/async (git worktrees + PTY) — the host intercepts this before executeTool.
-      throw new ToolError("dispatch_goal must be executed by the host, not executeTool.");
+    case "open_settings": {
+      const ok = ctx.openSettings();
+      return ok ? "Opened Settings." : "Settings can't be opened from here.";
+    }
     default:
+      if (ASYNC_TOOLS.has(name)) {
+        // Impure/async (Tauri IPC, git, PTY) — the host intercepts these first.
+        throw new ToolError(`${name} must be executed by the host, not executeTool.`);
+      }
       throw new ToolError(`Unhandled tool "${name}".`);
   }
 }

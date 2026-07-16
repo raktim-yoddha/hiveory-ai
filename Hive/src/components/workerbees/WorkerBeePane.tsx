@@ -638,17 +638,6 @@ export default function WorkerBeePane({
                   stallTimer = null;
                 }
 
-                // Debug print the active xterm.js buffer lines
-                console.log(`[xterm buffer debug - ${paneId}]`);
-                for (let i = 0; i < Math.min(25, terminal.buffer.active.length); i++) {
-                  const line = terminal.buffer.active.getLine(i);
-                  if (line) {
-                    const lineText = line.translateToString(true).trim();
-                    if (lineText) {
-                      console.log(`  Line ${i}: "${lineText}"`);
-                    }
-                  }
-                }
               }
             } catch (e) {
               console.error("Read error:", e);

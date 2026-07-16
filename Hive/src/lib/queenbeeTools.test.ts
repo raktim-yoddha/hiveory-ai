@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { executeTool, toolsForMode, ToolError, type ToolContext } from "./queenbeeTools";
+import { executeTool, toolsForMode, ToolError, ASYNC_TOOLS, type ToolContext } from "./queenbeeTools";
 
 function ctx(over: Partial<ToolContext> = {}): ToolContext {
   return {
@@ -10,6 +10,7 @@ function ctx(over: Partial<ToolContext> = {}): ToolContext {
     moveTask: vi.fn(() => true),
     launchWorkerBee: vi.fn(),
     setBoardOpen: vi.fn(),
+    openSettings: vi.fn(() => true),
     ...over,
   };
 }
@@ -47,5 +48,37 @@ describe("executeTool", () => {
 
   it("Forager may read the board", () => {
     expect(executeTool("Forager", "list_tasks", {}, ctx())).toContain("A");
+  });
+
+  it("opens settings", () => {
+    const c = ctx();
+    expect(executeTool("Steward", "open_settings", {}, c)).toContain("Opened");
+    expect(c.openSettings).toHaveBeenCalled();
+  });
+
+  it("reports when settings cannot be opened", () => {
+    expect(executeTool("Steward", "open_settings", {}, ctx({ openSettings: () => false }))).toContain("can't");
+  });
+
+  it("refuses async tools — the host must run them", () => {
+    for (const name of ASYNC_TOOLS) {
+      expect(() => executeTool("Steward", name, { goal: "x", path: "p", query: "q" }, ctx())).toThrow(/must be executed by the host/);
+    }
+  });
+});
+
+describe("read-only memory tools", () => {
+  it("are available to every mode (auditors must read memory)", () => {
+    for (const mode of ["Steward", "Forager", "Stinger"] as const) {
+      const names = toolsForMode(mode).map((t) => t.name);
+      expect(names).toContain("search_memory");
+      expect(names).toContain("read_memory_file");
+      expect(names).toContain("list_memory_files");
+    }
+  });
+
+  it("dispatch_goal stays Steward-only", () => {
+    expect(toolsForMode("Forager").map((t) => t.name)).not.toContain("dispatch_goal");
+    expect(toolsForMode("Steward").map((t) => t.name)).toContain("dispatch_goal");
   });
 });

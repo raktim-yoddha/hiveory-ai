@@ -15,9 +15,6 @@
     "build": "tsc",
     "test": "vitest"
   },
-  "dependencies": {
-    "@hiveory/nectar": "workspace:*"
-  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",

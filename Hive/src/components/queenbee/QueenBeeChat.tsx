@@ -18,6 +18,7 @@ import {
 } from "@/lib/queenbeeTools";
 import { useProjectStore } from "@/stores/projectStore";
 import { dispatchGoal } from "@/lib/dispatch";
+import { Nectar } from "@/lib/nectar";
 
 interface Message {
   id: string;
@@ -131,17 +132,48 @@ export default function QueenBeeChat({ docked, onToggleDock, onOpenSettings }: Q
           cli, cliName: cli, customName: name,
         }),
       setBoardOpen: (open) => useWorkspaceStore.getState().setBoardOpen(open),
+      openSettings: () => {
+        if (!onOpenSettings) return false;
+        onOpenSettings();
+        return true;
+      },
     };
   };
 
   const runTool = async (name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<string> => {
     try {
       if (ASYNC_TOOLS.has(name)) {
+        const projectPath = useProjectStore.getState().projectPath || "";
+
+        // Read-only memory tools — available to every mode (Forager/Stinger need
+        // to read the project's memory to audit it).
+        if (name === "list_memory_files" || name === "read_memory_file" || name === "search_memory") {
+          if (!projectPath) throw new ToolError("No project is open.");
+          const nectar = new Nectar(projectPath);
+          if (name === "list_memory_files") {
+            const res = await nectar.listMemoryFiles();
+            const files = res?.files ?? [];
+            return files.length ? files.map((f: string) => `- ${f}`).join("\n") : "No memory files.";
+          }
+          if (name === "read_memory_file") {
+            const path = String(args.path || "");
+            if (!path) throw new ToolError('Missing required argument "path" for read_memory_file.');
+            const res = await nectar.readMemoryFile(path);
+            return res?.content || `(empty or missing: ${path})`;
+          }
+          const query = String(args.query || "");
+          if (!query) throw new ToolError('Missing required argument "query" for search_memory.');
+          const res = await nectar.search(query, { limit: 5 });
+          const hits = res?.results ?? [];
+          return hits.length
+            ? hits.map((h: any) => `- [${h.score?.toFixed?.(3) ?? "?"}] ${h.chunk?.source_file ?? "?"}: ${String(h.chunk?.content ?? "").slice(0, 200)}`).join("\n")
+            : "No memory matches.";
+        }
+
         if (activeMode !== "Steward") throw new ToolError(`Tool "${name}" is not available in ${activeMode} mode.`);
         if (name === "dispatch_goal") {
           const goal = String(args.goal || "");
           if (!goal) throw new ToolError('Missing required argument "goal" for dispatch_goal.');
-          const projectPath = useProjectStore.getState().projectPath || "";
           const results = await dispatchGoal(goal, projectPath, {
             launchWorkerBee: (cli, displayName, cwd) =>
               useWorkerBeesStore.getState().addWorkerBee({
