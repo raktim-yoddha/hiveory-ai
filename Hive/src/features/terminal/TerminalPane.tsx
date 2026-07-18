@@ -7,7 +7,6 @@ import { SearchAddon } from "xterm-addon-search";
 import { WebglAddon } from "xterm-addon-webgl";
 import {
   Terminal,
-  ChevronDown,
   Copy,
   Trash2,
   Eraser,
@@ -79,7 +78,6 @@ export default function TerminalPane({
   // The shell chosen at launch. Cleared when the user picks from the in-pane
   // menu, so that menu takes over from then on.
   const [launchCommand, setLaunchCommand] = useState<string | undefined>(shellCommand);
-  const [showTerminalMenu, setShowTerminalMenu] = useState(false);
 
   const displayName = tabName || paneId;
   const refitCount = useWorkerBeesStore((s) => s.refitCount);
@@ -343,22 +341,11 @@ export default function TerminalPane({
     }
   };
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest(".dropdown-menu")) {
-        setShowTerminalMenu(false);
-      }
-    };
-
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, []);
 
   return (
     <div className="flex flex-col h-full bg-[#1a1614]/85 overflow-hidden">
       {/* terminal header */}
-      <div data-pane-drag className="h-8 glass-toolbar border-b border-bee-border/50 flex items-center justify-between px-2 cursor-grab active:cursor-grabbing">
+      <div data-pane-drag className="h-8 border-b border-bee-gold/40 bg-gradient-to-r from-bee-gold/[0.18] to-bee-gold/[0.06] backdrop-blur-md flex items-center justify-between px-2 cursor-grab active:cursor-grabbing">
         <div className="flex items-center gap-2">
           {isEditing && onEditChange ? (
             <input
@@ -383,51 +370,12 @@ export default function TerminalPane({
             </span>
           )}
 
-          <div className="relative">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowTerminalMenu(!showTerminalMenu);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-bee-canvas/70 border border-bee-border hover:border-bee-gold/60 text-bee-textDim hover:text-bee-text transition-all"
-            >
-              <Terminal size={11} className="text-bee-gold" />
-              {launchCommand ? (shellLabel || launchCommand) : TERMINAL_LABELS[selectedTerminal]}
-              <ChevronDown size={10} className="text-bee-textMuted" />
-            </button>
-            {showTerminalMenu && (
-              <div className="dropdown-menu absolute left-0 top-8 glass-hi rounded-xl z-20 min-w-40 p-1 animate-fade-in">
-                <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-bee-gold font-semibold">
-                  Terminal Type
-                </div>
-                {(Object.keys(TERMINAL_LABELS) as TerminalType[]).map(
-                  (terminal) => (
-                    <button
-                      key={terminal}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setLaunchCommand(undefined);
-                        setSelectedTerminal(terminal);
-                        setShowTerminalMenu(false);
-                        setIsSpawned(false);
-                      }}
-                      className={`w-full px-2.5 py-1.5 text-left text-xs rounded-lg flex items-center gap-2 transition-colors ${selectedTerminal === terminal ? "bg-bee-gold/15 text-bee-goldHi" : "text-bee-textDim hover:bg-bee-border/50 hover:text-bee-text"}`}
-                    >
-                      <Terminal
-                        size={11}
-                        className={
-                          selectedTerminal === terminal
-                            ? "text-bee-gold"
-                            : "text-bee-textMuted"
-                        }
-                      />
-                      {TERMINAL_LABELS[terminal]}
-                    </button>
-                  ),
-                )}
-              </div>
-            )}
-          </div>
+          {/* Shell is chosen at creation (via the Terminal plane's + menu),
+              so the header just labels it — no in-pane switcher. */}
+          <span className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] text-bee-textDim">
+            <Terminal size={11} className="text-bee-gold" />
+            {launchCommand ? (shellLabel || launchCommand) : TERMINAL_LABELS[selectedTerminal]}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           {onToggleMaximize && (

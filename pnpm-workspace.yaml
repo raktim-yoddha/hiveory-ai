@@ -1,4 +1,5 @@
 packages:
+  - 'BeeVoice'
   - 'Hive'
   - 'HiveMind'
   - 'Nectar'

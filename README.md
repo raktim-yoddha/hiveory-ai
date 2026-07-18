@@ -1,126 +1,164 @@
-# Hiveory AI
+# Hiveory
 
 > Project intelligence lives in the project, not in a chat session.
 
-A local-first, AI-native desktop dev environment. Open a project, run any CLI coding agent in a terminal pane, and every agent reads from and writes to **one shared, project-scoped memory store**. Hand a goal to QueenBee and a team of agents builds it in parallel — each in its own git worktree, all sharing the same memory.
+Hiveory is a local-first, AI-native desktop dev environment. Run any CLI coding agent in a terminal pane; every agent reads and writes **one shared, project-scoped memory store**, so switching tools never loses context. Hand a goal to QueenBee and a team of agents builds it in parallel — each in its own git worktree, coordinated by file-ownership locks.
 
-## Features
+- **Shared memory (Nectar)** — hybrid vector + keyword retrieval over `.nectar/memory/*.md`, injected into every agent.
+- **WorkerBees** — launch Claude Code, Codex, OpenCode, Aider, and more in real PTY panes.
+- **QueenBee** — conversational planner that breaks a goal into tasks and dispatches agents via tool-calling.
+- **Plane workspace** — one surface at a time: WorkerBees, Terminal, Browser, CoWorkers, or Android Emulator.
+- **Browser + Emulator panes** — CDP localhost preview with agent-readable screenshots; build/boot Android AVDs.
+- **Local voice** — whisper.cpp dictation, no API key, with in-app push-to-talk hotkeys.
 
-- **Unified memory (Nectar)** — hybrid vector + keyword search over project knowledge, shared by all agents. Stored as plain, git-diffable `.nectar/memory/*.md`.
-- **WorkerBees** — launch CLI agents (Claude Code, Codex, OpenCode, Aider, Cline, Kilo, Antigravity, and more) in real terminal panes, wired to memory via MCP or stdin injection.
-- **QueenBee** — conversational planner (Steward / Forager / Stinger modes) that breaks a goal into tasks with declared file ownership and acts on the app via tool-calling.
-- **Multi-agent orchestration** — dispatch a goal to isolated git worktrees, one WorkerBee per task, tracked on the Task Comb board.
-- **Task Comb** — pipeline/board view of a mission's stages.
-- **Workspaces** — multiple saved project contexts as tabs, each with its own pane layout and running agents.
-- **Model-agnostic** — swap agents without losing context.
+## 📑 Table of Contents
 
-## How it works
+- [🚀 How to Use](#-how-to-use)
+- [🧠 Implementation Overview](#-implementation-overview)
+- [🛠️ Tech Stack](#️-tech-stack)
+- [⚙️ Setup & Installation](#️-setup--installation)
+- [📁 Project Structure](#-project-structure)
+- [📦 Exports](#-exports)
+- [⬇️ Downloads](#️-downloads)
+- [📄 License](#-license)
 
-Tauri (Rust) backend + Vite/React frontend. The core is **Nectar**, a hybrid-retrieval memory layer shared by every agent.
+## 🚀 How to Use
+
+- **Open a project** — a `.nectar/` memory store is created (or reused) in the folder.
+- **Pick a plane** from the title bar, then use its `+` to add panes: launch a CLI agent (WorkerBees), a shell (Terminal), a CDP browser, or an Android emulator.
+- **Dispatch with QueenBee** — describe a goal in the right dock; Steward breaks it into tasks with declared file ownership, creates a git worktree per builder, launches an agent in each, and tracks them on the Task Comb board.
+- **Preview & test** — the Browser pane loads your localhost dev server; QueenBee can screenshot it. The Emulator pane builds an immutable AVD (device, RAM, storage) and boots it.
+- **Voice** — click the mic in QueenBee to dictate; or push-to-talk: hold **Ctrl+Win** to type into the focused field, **Win+Alt** to dictate into QueenBee.
+
+## 🧠 Implementation Overview
+
+Each root folder is a standalone package that owns its domain; **Hive borrows, never re-implements**. Side effects that a browser can't do (git, fs, PTY) go through typed ports, with Tauri-backed adapters supplied by Hive.
 
 ```mermaid
 flowchart LR
     U[User] --> UI[React UI]
-    UI -->|Tauri invoke| RS[Rust Backend]
+    UI -->|invoke| RS[Rust Backend]
     RS --> PTY[portable-pty] --> AG[CLI Agent Pane]
     AG -->|MCP nectar_query| NEC[(nectar.db + memory/*.md)]
     RS --> NEC
     UI --> QB[QueenBee dock]
-    QB -->|dispatch_goal| DS[dispatch.ts]
-    DS -->|create_worktree| RS
-    DS --> AG
+    QB -->|dispatch_goal| DP[dispatch.ts]
+    DP --> ORCH[HiveMind Orchestrator]
+    ORCH -->|create_worktree| RS
+    ORCH --> AG
 ```
 
-**Retrieval:** query (task + open files + git diff) is embedded as a 384-dim character n-gram hash (deterministic, identical in Rust and JS — no external model) and keyword-sanitized. Vector cosine and keyword (FTS5 in Rust / FTS4 in Node) searches run together, merged via Reciprocal Rank Fusion (`k=60`), then capped to a token budget by rank. Memory is chunked by heading/paragraph; whole files are never injected. All retrieval lives in `@hiveory/nectar`; the MCP server imports it.
+- **Hybrid retrieval** — query is embedded as a deterministic 384-dim char n-gram (identical in Rust and JS), fused with SQLite FTS via Reciprocal Rank Fusion, then token-budget capped. See [`Nectar/src/search`](Nectar/src/search).
+- **Orchestration** — `HiveMind.Orchestrator` runs file-ownership lock checks before dispatch and merges branches on approve. Pure core stays free of `node:` imports (enforced by a test); Hive injects adapters in [`hivemindAdapters.ts`](Hive/src/features/orchestration/hivemindAdapters.ts).
 
-**Memory bridge per agent:** MCP-capable agents get a `nectar_query` tool registered; others receive a compact handoff summary injected at boot.
+```mermaid
+graph LR
+    G[Goal] --> BD[QueenBee.breakdown]
+    BD --> PL[plan: lock check]
+    PL -->|ok| WT[git worktree] --> BEE[WorkerBee]
+    PL -->|conflict| BLK[blocked card]
+    BEE --> RV[review] --> MG[merge + release locks]
+```
 
-## Tech Stack
+- **Pure card + AVD logic** — board ordering ([`TaskComb/src/cards.ts`](TaskComb/src/cards.ts)) and Android `config.ini` generation ([`Hive/src/features/emulator/android/avd.ts`](Hive/src/features/emulator/android/avd.ts)) are pure and unit-tested.
 
-| Layer | Technology |
-| --- | --- |
-| Desktop shell | Tauri v2 (Rust) |
-| Frontend | Vite + React, TailwindCSS, Zustand |
-| Terminal | `xterm.js` (+ webgl/fit/search) over `portable-pty` |
-| Storage | SQLite — `rusqlite` (Rust) + `sql.js` (Node) → `nectar.db` |
-| Search | In-DB vector cosine + SQLite FTS5/FTS4, fused with RRF |
-| Agent bridge | Model Context Protocol (MCP) stdio server |
-| Worktrees | `git worktree` via Rust Tauri commands |
-| Monorepo | `pnpm` workspaces + Turborepo, TypeScript + Rust |
-| Tests | Vitest (per package) |
+## 🛠️ Tech Stack
 
-## Getting Started
+| Category | Technology | Purpose |
+| --- | --- | --- |
+| Desktop shell | Tauri v2 (Rust) | native window, IPC, process/filesystem access |
+| Frontend | React + Vite + TailwindCSS + Zustand | UI, panes, state |
+| Terminal | `xterm.js` + `portable-pty` | agent & shell panes over a PTY |
+| Memory store | SQLite (`rusqlite` / `sql.js`) + FTS5 | Nectar hybrid retrieval |
+| Agent bridge | Model Context Protocol (stdio) | exposes `nectar_query` to CLIs |
+| Orchestration | `@hiveory/hivemind` | git worktrees, file locks, dispatch/approve |
+| Browser pane | Chrome DevTools Protocol | localhost preview + screenshots |
+| Emulator | Android SDK (`emulator` / `adb`) | build + boot AVDs |
+| Voice | whisper.cpp + WebAudio | local, offline dictation |
+| Monorepo | `pnpm` workspaces + Turborepo | TypeScript + Rust |
+| Tests | Vitest | per-package unit tests |
 
-**Prerequisites:** Node ≥ 20, pnpm ≥ 9, Rust (stable) + Cargo, [Tauri v2 system deps](https://tauri.app/start/prerequisites), and at least one CLI agent on PATH.
+## ⚙️ Setup & Installation
+
+**Prerequisites**
+
+- Node.js ≥ 20
+- pnpm ≥ 9 (`npm i -g pnpm`)
+- Rust (stable) + Cargo — https://rustup.rs
+- [Tauri v2 system dependencies](https://tauri.app/start/prerequisites) for your OS
+- At least one CLI coding agent on PATH (e.g. `npm i -g @anthropic-ai/claude-code`)
+- Optional: Android SDK (`emulator` + `platform-tools`) for the Emulator plane
+
+Provider API keys are entered in the in-app Settings panel and stored locally — there are no `.env` files.
+
+**Install & run**
 
 ```bash
 pnpm install
 pnpm turbo build
-cd Hive && pnpm tauri:dev     # run the desktop app (Rust + frontend hot reload)
+cd Hive && pnpm tauri:dev
 ```
 
-- Frontend only: `cd Hive && pnpm dev`
-- Build installers: `cd Hive && pnpm tauri:build` → `Hive/src-tauri/target/release/bundle/` (NSIS `.exe`, MSI)
-- Per-package: `pnpm build && pnpm test` in any package, or `pnpm turbo build|test` from root
+**Build installers**
 
-**Keys:** local-first, no `.env`. Provider keys (Anthropic, OpenAI, Google, OpenRouter, Moonshot, …) are entered in the in-app Settings panel, stored via persisted Zustand, and passed to each agent's environment at launch.
+```bash
+cd Hive && pnpm tauri:build
+```
 
-## Packages
+## 📁 Project Structure
 
-| Package | Purpose |
+```text
+Hiveory/
+├── Hive/                     # Tauri desktop app
+│   ├── src/
+│   │   ├── app/              # HomePage shell (title bar, planes, docks)
+│   │   ├── features/         # one folder per feature (owns UI + store + tests)
+│   │   │   ├── panes/        # plane host + switcher
+│   │   │   ├── worker-bees/  # CLI agent panes
+│   │   │   ├── terminal/     # shell panes (xterm)
+│   │   │   ├── browser/      # CDP browser pane
+│   │   │   ├── emulator/     # Android AVD build + panes
+│   │   │   ├── queenbee/     # planner chat + tools
+│   │   │   ├── orchestration/# dispatch + HiveMind adapters
+│   │   │   ├── task-comb/    # mission board
+│   │   │   ├── voice/        # whisper dictation + hotkeys
+│   │   │   ├── memory/ · sessions/ · settings/ · workspaces/ · dock/
+│   │   └── shared/           # cross-feature: tauri, stores, logo
+│   └── src-tauri/            # Rust: PTY, fs, git/worktree, CDP, emulator, whisper
+├── Nectar/                   # memory: DB, retrieval, injection
+│   └── nectar-mcp/           # MCP stdio server (nectar_query)
+├── HiveMind/                 # orchestration engine (registry, locks, worktrees)
+├── QueenBee/                 # planning: breakdown, assignment, review routing
+├── TaskComb/                 # board/pipeline state + React UI
+├── WorkerBees/               # per-CLI adapters + launcher
+├── BeeVoice/                 # local voice layer (whisper.cpp, injectable ports)
+├── pnpm-workspace.yaml
+└── turbo.json
+```
+
+## 📦 Exports
+
+Consumed by Hive via `workspace:*`. Each ships a pure entry; Node-only engines sit behind a `/core` subpath where noted.
+
+| Package | Key exports |
 | --- | --- |
-| `Hive` | Tauri desktop app — UI shell + Rust backend (PTY, filesystem, git/worktree, Nectar IPC) |
-| `Nectar` | Unified memory: DB, markdown read/write, hybrid retrieval, injection |
-| `Nectar/nectar-mcp` | MCP stdio server exposing `nectar_query` + per-CLI config builders |
-| `QueenBee` | Planning: goal → task breakdown, role/CLI assignment, progress + review routing, mode prompts |
-| `TaskComb` | Board/pipeline state + React UI |
-| `WorkerBees` | Per-CLI adapters + launcher (Nectar injection, session management) |
-| `HiveMind` | Orchestration engine: registry, file-ownership locks, roles, worktrees, handoffs, plan/dispatch/approve |
+| `@hiveory/nectar` | `Nectar`, `SearchEngine`, `InjectionPipeline` |
+| `@hiveory/nectar-mcp` | `buildCliConfig`, `runNectarQuery`, `NECTAR_QUERY_TOOL` |
+| `@hiveory/hivemind` (`/core`) | `Orchestrator`, `AgentRegistry`, `LockRegistry`, `RoleManager`, `WorktreeOps` |
+| `@hiveory/queenbee` | `breakdown`, `DefaultAssignmentStrategy`, `ReviewRouter`, `MODE_SYSTEM_PROMPTS` |
+| `@hiveory/taskcomb` | `Board`, `addCard`/`moveCard`, `PipelineBoard`, `buildPipeline` |
+| `@hiveory/worker-bees` | `WorkerBeeLauncher`, `CLI_METADATA`, `buildCliConfig` |
+| `@hiveory/bee-voice` (`/core`) | `BeeVoice`, `STTEngine`, `AudioRecorder`, `WhisperCppEngine` |
 
-## Tauri IPC
+## ⬇️ Downloads
 
-No HTTP server — the frontend calls Rust via `invoke(...)`. Command groups:
+No prebuilt binaries are published. `cd Hive && pnpm tauri:build` produces Windows installers under `Hive/src-tauri/target/release/bundle/`:
 
-- **Panes:** `spawn_terminal`, `write_to_terminal`, `read_from_terminal`, `resize_terminal`, `kill_terminal`, `is_process_alive`
-- **Files/git:** `read_file`, `write_file`, `list_directory`, `git_status`
-- **Worktrees:** `create_worktree`, `merge_worktree`, `remove_worktree`
-- **Nectar:** `ensure_nectar_structure`, `nectar_read_memory_file`, `nectar_write_memory_file`, `nectar_list_memory_files`, `nectar_index_file`, `nectar_search`, `nectar_inject`, `nectar_log_session`, `get_nectar_mcp_path`
+| Installer | Path |
+| --- | --- |
+| NSIS setup | `nsis/Hiveory AI_<version>_x64-setup.exe` |
+| MSI | `msi/Hiveory AI_<version>_x64_en-US.msi` |
 
-The MCP server exposes one agent-facing tool: `nectar_query` (`task`, optional `open_files`, `git_diff`, `max_chunks`).
+## 📄 License
 
-## Architecture rule
-
-Each root folder is a standalone package that owns its domain. **Hive borrows; it
-never re-implements.** Orchestration policy lives in HiveMind, planning in
-QueenBee, retrieval in Nectar, board state in TaskComb.
-
-Side effects are the one thing packages can't do portably — the renderer has no
-`node:child_process`/`node:fs`. So HiveMind defines **ports** (`WorktreeOps`,
-`HandoffFs`) and ships Node implementations for CLI use; Hive injects
-Tauri-backed adapters ([`hivemindAdapters.ts`](Hive/src/lib/hivemindAdapters.ts)).
-Import `@hiveory/hivemind/core` for the pure engine, or the package root for
-core + Node implementations. A test enforces that the core stays free of `node:`
-imports.
-
-## Status
-
-Working: shell, terminal panes, Nectar memory (Rust-backed read/write/search),
-Task Comb (pipeline/progress/tasks/history), QueenBee modes + tool-calling, and
-dispatch driven by **HiveMind's Orchestrator** — lock-conflict checks, git
-worktree per builder, handoff files, and agent registry. Explorer/Search/Git are
-functional with a read-only file/diff viewer. A CDP browser pane gives localhost
-preview and screenshots QueenBee can read.
-
-Verified by unit tests across all packages (`pnpm turbo test`), `tsc --noEmit`,
-and `cargo build`. **Not verified by running the desktop app** — the GUI flow
-(real worktree, PTY spawn, CDP screencast, branch merge) can't be exercised
-headless and needs a manual pass with `pnpm tauri:dev`.
-
-Not yet wired: the Reviewer loop (`approve`/`reject` exist in HiveMind and merge
-via `merge_worktree`, but no reviewer UI drives them), and `Board`/TaskComb card
-state is not yet the same store the Orchestrator registry uses.
-
-## License
-
-Personal, non-commercial use only — see [LICENSE](LICENSE). Commercial use is not
-permitted; contact raktimyoddha07@gmail.com for a commercial license.
+Personal, non-commercial use only — see [LICENSE](LICENSE). Commercial use is not permitted; contact raktimyoddha07@gmail.com for a commercial license.

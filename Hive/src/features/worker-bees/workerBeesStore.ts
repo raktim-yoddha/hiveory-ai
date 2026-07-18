@@ -6,9 +6,10 @@ export interface WorkerBee {
   cliName: string;
   customName?: string;
   args?: string[];
-  // 'agent' (a CLI coding agent, the default), 'shell' (a plain terminal), or
-  // 'browser' (a CDP-driven Chromium view). Each renders its own pane component.
-  kind?: 'agent' | 'shell' | 'browser';
+  // 'agent' (a CLI coding agent, the default), 'shell' (a plain terminal),
+  // 'browser' (a CDP-driven Chromium view), 'emulator' (Android/AVD), or
+  // 'coworker' (a CoworkerBees assistant). Each renders its own pane component.
+  kind?: 'agent' | 'shell' | 'browser' | 'emulator' | 'coworker';
   /** browser panes only — page to open on mount */
   url?: string;
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { WorkerBee } from '@/features/worker-bees/workerBeesStore';
-import type { TaskCard } from '@hiveory/taskcomb';
+import type { TaskCard, NewCardInput } from '@hiveory/taskcomb';
 import { addCard, moveCard } from '@hiveory/taskcomb';
 
 export type { TaskCard } from '@hiveory/taskcomb';
@@ -38,6 +38,8 @@ interface WorkspaceState {
   setRenamingWorkspaceId: (id: string | null) => void;
 
   addTask: (workspaceId: string, title: string, description?: string) => void;
+  /** Add a fully-specified card (dispatch: cli, role, agent link, branch). */
+  addTaskCard: (workspaceId: string, input: NewCardInput) => void;
   setTasks: (workspaceId: string, tasks: TaskCard[]) => void;
   moveTask: (workspaceId: string, taskId: string, targetColumn: import('@hiveory/taskcomb').ColumnId, targetIndex?: number) => void;
   activateWorkspaceAndSync: (id: string) => void;
@@ -97,6 +99,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         w.id === workspaceId
           ? { ...w, taskCards: addCard(w.taskCards, { title, description }) }
           : w,
+      ),
+    })),
+
+  addTaskCard: (workspaceId, input) =>
+    set((state) => ({
+      workspaces: state.workspaces.map((w) =>
+        w.id === workspaceId ? { ...w, taskCards: addCard(w.taskCards, input) } : w,
       ),
     })),
 

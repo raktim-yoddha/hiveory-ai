@@ -13,6 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@hiveory/bee-voice": "workspace:*",
     "@hiveory/nectar": "workspace:*",
     "@hiveory/nectar-mcp": "workspace:*",
     "@hiveory/queenbee": "workspace:*",

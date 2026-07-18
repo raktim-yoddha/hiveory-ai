@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import WorkerBeesPanel from "@/features/worker-bees/WorkerBeesPanel";
-import type { CLIType } from "@/features/worker-bees/cli-types";
-import { CLI_METADATA } from "@hiveory/worker-bees";
+import PlaneHost, { PlaneSwitcher } from "@/features/panes/PlaneHost";
+import KanbanPanel from "@/features/task-comb/TaskCombPanel";
+import VoiceHotkeys from "@/features/voice/VoiceHotkeys";
+import HiveoryLogo from "@/shared/HiveoryLogo";
 import SettingsPage from "@/features/settings/SettingsPage";
 import { useWorkerBeesStore, WorkerBee } from "@/features/worker-bees/workerBeesStore";
 import { getTauriAPIs, loadTauriAPIs } from "@/shared/tauri";
@@ -14,12 +15,10 @@ import { useProjectStore } from "@/shared/projectStore";
 import { useUiStore } from "@/shared/uiStore";
 import {
   Settings,
-  Bot,
   X,
   Minus,
   Square,
   Copy,
-  Terminal as TerminalIcon,
   ChevronDown,
   FolderOpen,
   GitBranch,
@@ -32,7 +31,6 @@ import {
   Sparkles,
   Columns2,
   Columns4,
-  Globe,
   type LucideIcon,
 } from "lucide-react";
 
@@ -76,8 +74,7 @@ export default function HomePage() {
   const toggleRight = useUiStore((s) => s.toggleRight);
 
   const workerBees = useWorkerBeesStore((state) => state.workerBees);
-  const addWorkerBee = useWorkerBeesStore((state) => state.addWorkerBee);
-  const setAgentStatus = useWorkerBeesStore((state) => state.setAgentStatus);
+  const agentStatuses = useWorkerBeesStore((state) => state.agentStatuses);
   const gridLayout = useWorkerBeesStore((state) => state.gridLayout);
   const setGridLayout = useWorkerBeesStore((state) => state.setGridLayout);
   const refitTerminals = useWorkerBeesStore((state) => state.refitTerminals);
@@ -86,25 +83,13 @@ export default function HomePage() {
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace);
   const boardOpen = useWorkspaceStore((s) => s.boardOpen);
   const setBoardOpen = useWorkspaceStore((s) => s.setBoardOpen);
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => refitTerminals());
     return () => cancelAnimationFrame(id);
   }, []);
-
-  const [showCLIPicker, setShowCLIPicker] = useState(false);
-
-  // Detected shells for the Terminal launcher dropdown.
-  const [detectedShells, setDetectedShells] = useState<{ id: string; label: string; command: string }[]>([]);
-  const [showTermMenu, setShowTermMenu] = useState(false);
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
-  useEffect(() => {
-    const apis = getTauriAPIs();
-    if (!apis?.invoke) return;
-    apis.invoke("detect_shells")
-      .then((s: any) => setDetectedShells(Array.isArray(s) ? s : []))
-      .catch(() => setDetectedShells([]));
-  }, []);
 
   useEffect(() => {
     const initializeWindow = async () => {
@@ -225,57 +210,7 @@ export default function HomePage() {
     return () => { cancelled = true; clearInterval(interval); };
   }, [projectPath]);
 
-  const handleCLISelect = (cli: CLIType) => {
-    const meta = CLI_METADATA.find((c) => c.id === cli);
-    const newWorkerBee: WorkerBee = {
-      id: `workerbee-${Date.now()}`,
-      cli: meta?.command ?? cli,
-      cliName: meta?.name ?? cli,
-    };
-
-    addWorkerBee(newWorkerBee);
-    setAgentStatus(newWorkerBee.id, "launching");
-
-    if (activeWorkspaceId) {
-      const ws = workspaces.find((w) => w.id === activeWorkspaceId);
-      if (ws) {
-        updateWorkspace(activeWorkspaceId, {
-          paneLayout: [...ws.paneLayout, newWorkerBee],
-        });
-      }
-    }
-  };
-
-  // Open a CDP-driven browser pane (localhost preview, agent-readable screenshots).
-  const handleAddBrowser = () => {
-    const pane: WorkerBee = {
-      id: `browser-${Date.now()}`,
-      cli: "browser",
-      cliName: "Browser",
-      kind: "browser",
-    };
-    addWorkerBee(pane);
-    if (activeWorkspaceId) {
-      const ws = workspaces.find((w) => w.id === activeWorkspaceId);
-      if (ws) updateWorkspace(activeWorkspaceId, { paneLayout: [...ws.paneLayout, pane] });
-    }
-  };
-
-  // Open a plain shell terminal pane (not a CLI agent) running the chosen shell.
-  const handleAddTerminal = (shell?: { label: string; command: string }) => {
-    setShowTermMenu(false);
-    const terminal: WorkerBee = {
-      id: `terminal-${Date.now()}`,
-      cli: shell?.command ?? "shell",
-      cliName: shell?.label ?? "Terminal",
-      kind: "shell",
-    };
-    addWorkerBee(terminal);
-    if (activeWorkspaceId) {
-      const ws = workspaces.find((w) => w.id === activeWorkspaceId);
-      if (ws) updateWorkspace(activeWorkspaceId, { paneLayout: [...ws.paneLayout, terminal] });
-    }
-  };
+  // Pane adds live in each plane's own header now (see PlaneHost).
 
   const activeLayout =
     LAYOUT_OPTIONS.find((o) => o.value === gridLayout) ?? LAYOUT_OPTIONS[0];
@@ -323,11 +258,9 @@ export default function HomePage() {
         {/* Center section — branding + controls */}
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-gradient-to-br from-bee-goldHi to-bee-goldDim rounded-lg flex items-center justify-center text-[10px] font-bold text-[#1a1200] shadow-glow">
-              H
-            </div>
+            <HiveoryLogo size={24} className="shadow-glow" />
             <span className="text-xs font-semibold tracking-tight text-bee-text hidden sm:inline">
-              Hiveory<span className="text-bee-gold">AI</span>
+              Hive<span className="text-bee-gold">ory</span>
             </span>
           </div>
 
@@ -387,84 +320,10 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* WorkerBee launcher — same dropdown pattern as Terminal. */}
-          <div className="relative flex-shrink-0">
-            <button
-              onClick={() => setShowCLIPicker((v) => !v)}
-              className="flex items-center gap-1 rounded-lg border border-bee-gold/20 bg-bee-gold/10 px-2 py-1 text-[11px] text-bee-goldHi transition-colors hover:bg-bee-gold/20"
-              title="Launch a WorkerBee (CLI agent)"
-            >
-              <Bot size={12} />
-              <span className="hidden sm:inline">WorkerBee</span>
-              <ChevronDown size={10} className="text-bee-goldHi/70" />
-            </button>
-            {showCLIPicker && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowCLIPicker(false)} />
-                <div className="absolute left-0 top-full z-50 mt-1 max-h-[70vh] min-w-56 overflow-y-auto scrollbar-sleek rounded-xl glass-hi p-1 animate-fade-in">
-                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-bee-gold">
-                    CLI agents
-                  </div>
-                  {CLI_METADATA.map((cli) => (
-                    <button
-                      key={cli.id}
-                      onClick={() => { handleCLISelect(cli.id as CLIType); setShowCLIPicker(false); }}
-                      className="flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-bee-textDim transition-colors hover:bg-bee-border/50 hover:text-bee-text"
-                    >
-                      <Bot size={11} className="mt-0.5 shrink-0 text-bee-gold" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate">{cli.name}</span>
-                        <span className="block truncate text-[9px] text-bee-textMuted">{cli.command}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          <button
-            onClick={handleAddBrowser}
-            className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-bee-border bg-bee-canvas/60 px-2 py-1 text-[11px] text-bee-textDim transition-colors hover:border-bee-gold/60 hover:text-bee-text"
-            title="Open a browser pane (localhost preview + agent screenshots)"
-          >
-            <Globe size={12} />
-            <span className="hidden sm:inline">Browser</span>
-          </button>
-
-          <div className="relative flex-shrink-0">
-            <button
-              onClick={() => setShowTermMenu((v) => !v)}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] bg-bee-canvas/60 border border-bee-border text-bee-textDim hover:text-bee-text hover:border-bee-gold/60 transition-colors"
-              title="Open a shell terminal"
-            >
-              <TerminalIcon size={12} />
-              <span className="hidden sm:inline">Terminal</span>
-              <ChevronDown size={10} className="text-bee-textMuted" />
-            </button>
-            {showTermMenu && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowTermMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 z-50 min-w-44 glass-hi rounded-xl p-1 animate-fade-in">
-                  <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-bee-gold font-semibold">Detected shells</div>
-                  {detectedShells.length === 0 ? (
-                    <div className="px-2.5 py-2 text-[11px] text-bee-textMuted">Detecting…</div>
-                  ) : (
-                    detectedShells.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => handleAddTerminal(s)}
-                        className="w-full px-2.5 py-1.5 text-left text-xs rounded-lg flex items-center gap-2 text-bee-textDim hover:bg-bee-border/50 hover:text-bee-text transition-colors"
-                      >
-                        <TerminalIcon size={11} className="text-bee-gold" />
-                        {s.label}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+          {/* Plane switcher — one center surface at a time (WorkerBees /
+              Terminal / Browser / CoWorkers / Emulator). Adds moved into each
+              plane's own header. */}
+          <PlaneSwitcher />
         </div>
 
         {/* Right section — right sidebar toggle + window controls */}
@@ -529,8 +388,17 @@ export default function HomePage() {
 
         {/* Main grid area — min-w-0 allows flex to shrink below children's intrinsic width when sidebars are docked */}
         <div className="flex-1 flex flex-col overflow-hidden relative min-w-0">
-          <WorkerBeesPanel
-            workingDir={projectPath}
+          <PlaneHost workingDir={projectPath} />
+          {/* Task Comb is docked to the center, outside the plane, so switching
+              planes never moves it. A fullscreen plane covers it — the plane's
+              floating Task Comb widget takes over there. */}
+          <KanbanPanel
+            open={boardOpen}
+            tasks={activeWorkspace?.taskCards ?? []}
+            statuses={agentStatuses}
+            projectPath={projectPath}
+            activeWorkspaceId={activeWorkspaceId}
+            onClose={() => setBoardOpen(false)}
           />
         </div>
 
@@ -564,6 +432,9 @@ export default function HomePage() {
       </div>
 
       {showSettings && <SettingsPage onClose={() => setShowSettings(false)} />}
+
+      {/* Global voice hotkeys: Ctrl+Win (type anywhere) · Ctrl+Alt (WorkerBee). */}
+      <VoiceHotkeys />
     </div>
   );
 }

@@ -15,8 +15,23 @@ importers:
         specifier: ^5.6.0
         version: 5.9.3
 
+  BeeVoice:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.20.0)
+
   Hive:
     dependencies:
+      '@hiveory/bee-voice':
+        specifier: workspace:*
+        version: link:../BeeVoice
       '@hiveory/hivemind':
         specifier: workspace:*
         version: link:../HiveMind

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send, Settings, Pin, PinOff, ExternalLink, ClipboardList, Search, ShieldCheck, ChevronDown, type LucideIcon } from "lucide-react";
+import VoiceButton from "@/features/voice/VoiceButton";
 import { MODE_SYSTEM_PROMPTS, detectModeIntent, type QueenBeeMode } from "@hiveory/queenbee";
 import type { ColumnId } from "@hiveory/taskcomb";
 import { useSettingsStore } from "@/features/settings/settingsStore";
@@ -310,14 +311,21 @@ export default function QueenBeeChat({ docked, onToggleDock, onOpenSettings, onO
           const goal = String(args.goal || "");
           if (!goal) throw new ToolError('Missing required argument "goal" for dispatch_goal.');
           const results = await dispatchGoal(goal, projectPath, {
-            launchWorkerBee: (cli, displayName, cwd) =>
-              useWorkerBeesStore.getState().addWorkerBee({
-                id: `bee-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                cli, cliName: cli, customName: displayName, args: cwd ? ["--cwd", cwd] : undefined,
-              }),
-            addCard: (title, description) => {
+            launchWorkerBee: (cli, displayName, cwd) => {
+              const id = `bee-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+              const bees = useWorkerBeesStore.getState();
+              bees.addWorkerBee({
+                id, cli, cliName: cli, customName: displayName,
+                args: cwd ? ["--cwd", cwd] : undefined,
+              });
+              // Mark it launching so the pipeline shows the node active straight
+              // away, rather than waiting for the pane to report in.
+              bees.setAgentStatus(id, "launching");
+              return id;
+            },
+            addCard: (card) => {
               const s = useWorkspaceStore.getState();
-              s.addTask(s.activeWorkspaceId || s.workspaces[0]?.id || "", title, description);
+              s.addTaskCard(s.activeWorkspaceId || s.workspaces[0]?.id || "", card);
             },
           });
           // Remember each worktree so approve_task can merge it later.
@@ -664,6 +672,7 @@ export default function QueenBeeChat({ docked, onToggleDock, onOpenSettings, onO
         <div className="flex items-center gap-2">
           <input
             ref={inputRef}
+            data-queenbee-input
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
@@ -671,6 +680,7 @@ export default function QueenBeeChat({ docked, onToggleDock, onOpenSettings, onO
             placeholder={`Message ${activeMode}…`}
             className="flex-1 bg-bee-canvas/70 border border-bee-border rounded-lg px-3 py-1.5 text-xs text-bee-text placeholder-bee-textMuted outline-none focus:ring-1 focus:ring-bee-gold transition-colors"
           />
+          <VoiceButton onTranscript={(t) => setInputValue((v) => (v ? `${v} ${t}` : t))} />
           {thinking ? (
             <div className="flex items-center justify-center p-1.5">
               <span className="w-3 h-3 rounded-full border-2 border-bee-gold border-t-transparent animate-spin" />

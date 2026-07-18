@@ -1,5 +1,6 @@
 import { breakdown } from "@hiveory/queenbee";
 import type { QueenBeeTask } from "@hiveory/queenbee";
+import type { NewCardInput } from "@hiveory/taskcomb";
 import {
   AgentRegistry, LockRegistry, RoleManager, Orchestrator, HandoffManager,
 } from "@hiveory/hivemind/core";
@@ -64,8 +65,9 @@ export function planDispatch(tasks: QueenBeeTask[]): DispatchPlanEntry[] {
 }
 
 export interface DispatchHooks {
-  launchWorkerBee: (cli: string, name: string, cwd?: string) => void;
-  addCard: (title: string, description: string, cli: string) => void;
+  /** Launch the agent pane and return its id, so the card can point at it. */
+  launchWorkerBee: (cli: string, name: string, cwd?: string) => string;
+  addCard: (card: NewCardInput) => void;
 }
 
 function buildOrchestrator(projectPath: string) {
@@ -165,6 +167,23 @@ export async function dispatchGoal(
       const check = orchestrator.plan([spec]);
       if (!check.canStart.some((t) => t.id === task.id)) {
         result.blockedBy = check.conflicts;
+        // Still surface it on the board, flagged — a blocked task that appears
+        // nowhere is worse than one shown as blocked.
+        hooks.addCard({
+          id: task.id,
+          title: task.description,
+          description: `owns: ${task.owns?.join(", ") || "—"}`,
+          column: "backlog",
+          owns: task.owns ?? [],
+          reads: task.reads ?? [],
+          dependsOn: task.dependsOn ?? [],
+          assignedRole: spec.role,
+          assignedCli: cli,
+          missionId,
+          blockingReason: check.conflicts
+            .map((c) => `${c.filePath} owned by ${c.existingOwner}`)
+            .join("; "),
+        });
         results.push(result);
         continue;
       }
@@ -174,8 +193,25 @@ export async function dispatchGoal(
       if (worktree) {
         result.worktree = { path: worktree.path, branch: worktree.branch, task_id: worktree.taskId };
       }
-      hooks.launchWorkerBee(cli, task.description.slice(0, 40), worktree?.path);
-      hooks.addCard(task.description, `owns: ${task.owns?.join(", ") || "—"}`, cli);
+
+      const workerBeeId = hooks.launchWorkerBee(cli, task.description.slice(0, 40), worktree?.path);
+
+      // The card must carry the agent link, or the pipeline can never show the
+      // task as running: nodeStatus() reads agent status via workerBeeId.
+      hooks.addCard({
+        id: task.id,
+        title: task.description,
+        description: `owns: ${task.owns?.join(", ") || "—"}`,
+        column: "in-progress",
+        owns: task.owns ?? [],
+        reads: task.reads ?? [],
+        dependsOn: task.dependsOn ?? [],
+        assignedRole: spec.role,
+        assignedCli: cli,
+        missionId,
+        workerBeeId,
+        worktreeBranch: worktree?.branch,
+      });
     } catch (e) {
       result.error = (e as Error)?.message || String(e);
     }

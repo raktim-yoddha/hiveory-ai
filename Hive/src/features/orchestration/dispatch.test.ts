@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { planDispatch, getOrchestrator, resetOrchestrator } from "./dispatch";
+import { planDispatch, getOrchestrator, resetOrchestrator, dispatchGoal } from "./dispatch";
 import type { QueenBeeTask } from "@hiveory/queenbee";
 
 // The orchestrator writes handoffs through Tauri IPC, which doesn't exist in a
@@ -91,5 +91,57 @@ describe("orchestrator lifetime", () => {
 
     // ...and approving releases it, so t2 can now claim the same file.
     expect(orchestrator.plan([spec("t2")]).canStart.map((t) => t.id)).toEqual(["t2"]);
+  });
+});
+
+describe("dispatched cards feed the Mission Pipeline", () => {
+  beforeEach(() => resetOrchestrator());
+
+  // Regression: cards used to be created with only {title, description}. The
+  // pipeline reads agent status via card.workerBeeId and shows the cli/branch,
+  // so an unlinked card could never render as running — the board looked idle
+  // while agents were actually working.
+  it("links the card to its agent, cli, role, branch and mission", async () => {
+    const cards: any[] = [];
+    const results = await dispatchGoal(
+      "build a thing",
+      "/proj",
+      {
+        launchWorkerBee: () => "bee-42",
+        addCard: (c) => cards.push(c),
+      },
+    );
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(cards.length).toBe(results.length);
+
+    const card = cards[0];
+    expect(card.workerBeeId).toBe("bee-42");
+    expect(card.column).toBe("in-progress");
+    expect(card.assignedCli).toBeTruthy();
+    expect(card.assignedRole).toBeTruthy();
+    expect(card.missionId).toBeTruthy();
+    expect(card.id).toBe(results[0].taskId);
+  });
+
+  it("still boards a lock-blocked task, flagged with why", async () => {
+    const cards: any[] = [];
+    // Pre-own the file the breakdown's task will claim.
+    const { orchestrator } = getOrchestrator("/proj2");
+    orchestrator.plan([{
+      id: "squatter", description: "holds the file", owns: ["src/index.ts"],
+      reads: [], dependsOn: [], role: "builder", cli: "claude", missionId: "m0",
+    }]);
+
+    await dispatchGoal("build a thing", "/proj2", {
+      launchWorkerBee: () => "bee-1",
+      addCard: (c) => cards.push(c),
+    });
+
+    const blocked = cards.filter((c) => c.blockingReason);
+    for (const b of blocked) {
+      expect(b.column).toBe("backlog");
+      expect(b.blockingReason).toMatch(/owned by/);
+    }
   });
 });

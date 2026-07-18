@@ -245,7 +245,7 @@ export default function BrowserPane({
       {/* Toolbar — data-pane-drag keeps it swappable like the other panes */}
       <div
         data-pane-drag
-        className="flex h-8 shrink-0 cursor-grab items-center gap-1 border-b border-bee-border/50 glass-toolbar px-1.5 active:cursor-grabbing"
+        className="flex h-8 shrink-0 cursor-grab items-center gap-1 border-b border-bee-gold/40 bg-gradient-to-r from-bee-gold/[0.18] to-bee-gold/[0.06] backdrop-blur-md px-1.5 active:cursor-grabbing"
       >
         <Globe className="size-3 shrink-0 text-bee-gold" />
         <button
